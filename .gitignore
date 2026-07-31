@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+*.tsbuildinfo.*
+web/dist/
+
+# Data & state (game servers, bundled JVM, worlds, DB, backups, logs)
+data/
+server/data/
+web/data/
+*.zip
+*.jar
+
+# Logs
+logs/
+*.log
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Misc
+*.tmp
+.cache/

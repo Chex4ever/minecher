@@ -1,0 +1,26 @@
+{
+  "name": "minecher",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Minecraft server manager with web UI, API, centralized logs",
+  "workspaces": [
+    "packages/*",
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "build": "npm run build -w @minecher/types && npm run build --workspaces --if-present",
+    "build:types": "npm run build -w @minecher/types",
+    "dev": "concurrently -k -n types,server,web \"npm run dev:types\" \"npm run dev:server\" \"npm run dev:web\"",
+    "dev:types": "tsc -w -p packages/types/tsconfig.json",
+    "dev:server": "npm run dev -w server",
+    "dev:web": "npm run dev -w web",
+    "typecheck": "npm run build:types && npm run typecheck --workspaces --if-present"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.1"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
