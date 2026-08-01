@@ -1,4 +1,4 @@
-export type ServerType = "vanilla" | "paper" | "spigot" | "forge" | "fabric" | "custom";
+export type ServerType = "vanilla" | "paper" | "spigot" | "forge" | "fabric" | "velocity" | "custom";
 
 export type ServerStatus =
   | "stopped"
@@ -34,6 +34,8 @@ export interface MinecraftServer {
   memoryMinMb: number;
   serverProps: Record<string, string>;
   serverPropsFile?: Record<string, string>;
+  velocityProxyId: string | null;
+  velocityTomlFile?: string;
   port: number;
   createdAt: string;
   updatedAt: string;

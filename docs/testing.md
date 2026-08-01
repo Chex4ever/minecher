@@ -64,9 +64,11 @@ Invoke-WebRequest "$base/imports/mcs" -Method Post -Headers $h -Form @{ file = G
 | `POST .../schedules` некорректный cron | 400 `bad_cron` |
 | `POST .../backups` → list → restore | zip создаётся (без logs/jar), restore атомарно заменяет каталог, `world/level.dat` на месте |
 | Запуск реального Minecraft-сервера | **не выполнялся** (нет подходящей Java/времени) — см. ограничения |
-| `GET /api/ports/:port` | 200 `{available, usedBy}`; занятый порт (слушатель ОС) → `available:false`; порт `70000` → 400 |
-| `POST /api/servers` без `port` | автоподбор: занятый 25565 пропущен, выбран 25566 |
-| `POST /api/servers` с занятым портом | 409 `{ "error": "port_busy" }` |
+| `GET /api/ports/:port` | 200 `{available, usedBy}`; порт в блоке другого сервера (включая +1/+2/+3/+4) → `available:false`, `usedBy` — имя сервера; `?exclude=<id>` освобождает собственный блок; порт `70000` → 400 |
+| `POST /api/servers` без `port` | автоподбор блока: серверы на 25555/25565/25566/25567 → выбран свободный блок 25572 (блоки пересекаются, если диапазоны `[port, port+4]` имеют общий порт) |
+| `POST /api/servers` с занятым портом (или пересекающим блок) | 409 `{ "error": "port_busy", "message": "Port block N-M is not fully free" }` |
+| `PATCH /api/servers/:id` на порт из чужого блока | 409 `port_busy` |
+| Старт сервера | `server.properties` на диске: `server-port=<port>`, `rcon.port=<port+1>`, `query.port=<port+2>`; слушается только `server-port` (rcon/query выключены) |
 | `POST /api/servers/:id/start` с пустым `Content-Type: application/json` | 200 `{"ok":true}` (раньше 400 `FST_ERR_CTP_EMPTY_JSON_BODY`) |
 | Первый старт без системной Java (сломанный PATH-java) | бандл Temurin скачан (Adoptium), распакован `Expand-Archive`, Paper стартует: лог `Starting: <data>/runtime/jre/bin/java.exe ...`, `System Info: Java ...` |
 | Запуск при ротации/смене файла лога | 200; падения `ERR_STREAM_WRITE_AFTER_END` больше нет (раньше процесс умирал на `LogStore.append`) |
@@ -77,6 +79,17 @@ Invoke-WebRequest "$base/imports/mcs" -Method Post -Headers $h -Form @{ file = G
 | `GET /api/servers/:id/export` | `.mcs` 6,8 МБ, валидный zip (29 записей), `mcs.json` корректен; раньше был баг `stream closed prematurely` + 0 байт (fastify `wrapThenable` двойной `send`) |
 | `POST /api/imports/mcs` (round-trip) | импорт экспортированного `.mcs` → новый сервер `Beta roundtrip` (порт 25567 авто-подобран, т.к. 25566 занят), `world/` (6 region) и `server.jar` на месте, `mcs.json` НЕ копируется в каталог; запуск → `Done (388025300ns)!`, статус `running` |
 | restore бэкапа через `adm-zip` | замена `extract-zip` (зависал на больших записях на Node 24) — распаковка работает |
+| `pid` в БД при старте/остановке | `start` пишет реальный pid java в `servers.pid`, `stop`/exit очищает; API отдаёт `server.pid` из runtime |
+| Reconcile: stale-статус | в БД `status='running', pid=<мёртвый>` → рестарт демона: `Stale status "running" reset to stopped (daemon restarted, no live process)`, `status=stopped`, `pid` очищен, WS-событие `status` |
+| Reconcile: orphan-java | настоящий java (бандл, порт 25567) жив при рестарте демона + БД `running/pid=<этот pid>` → лог `Daemon restarted: terminating orphan java process <pid>`, процесс убит (порт освобождён), `status=stopped` |
+| `GET /api/versions/velocity` | список стабильных версий Velocity (3.5.1/3.5.0/3.4.0/.../4.0.0), SNAPSHOT отфильтрованы |
+| Создание `velocity`-прокси и `paper`-бэкенда, `PATCH` бэкенда с `velocityProxyId` | 201/200; `GET` бэкенда отдаёт `velocityProxyId` |
+| Старт velocity-прокси | на диске `velocity.toml` (плоский формат, `config-version=2.8`, `bind = 0.0.0.0:<port>`, offline, modern forwarding, `[servers]` бэкенды, пустой `[forced-hosts]`) и `forwarding.secret`; лог `Listening on /[...]:<port>` (правильный порт!), без `deprecated configuration version`; MC status-ping на порт прокси → JSON `{"description":{"color":"green","text":"<name>"},"players":{"max":500}}` |
+| Старт бэкенда за прокси | `server.properties`: `server-ip=127.0.0.1`, `online-mode=false`; слушается только `127.0.0.1:<port>` (нет `0.0.0.0`/`[::]`); `config/paper-global.yml` → `proxies.velocity.enabled=true`, `online-mode=false`, `secret=<из forwarding.secret>` (корректные отступы); лог Paper: `Using Java compression/cipher from Velocity` |
+| `PATCH` с несуществующим `velocityProxyId` | 400 `{ "error": "invalid_proxy" }` |
+| `PATCH` velocity-прокси с `velocityProxyId` (прокси не может быть бэкендом) | 400 `invalid_proxy` |
+| DELETE velocity-прокси | у бэкендов `velocityProxyId` сбрасывается в `null` |
+| Экспорт `.mcs` бэкенда | `forwarding.secret` НЕ в архиве; манифест содержит `velocityProxyId` |
 
 ## Запуск реального сервера (ручной сценарий)
 
@@ -84,6 +97,14 @@ Invoke-WebRequest "$base/imports/mcs" -Method Post -Headers $h -Form @{ file = G
 2. Старт — в консоли должны появиться строки загрузки Paper; первый старт скачает ~450 МБ jar.
 3. EULA принимается автоматически (`eula.txt` → `eula=true`); по умолчанию `online-mode=false` (можно включить в настройках).
 4. Проверьте: `list` в консоли, вкладка Stats (RAM/CPU/игроки), вкладка Settings — в поле server.properties видно реальное содержимое, остановка через кнопку.
+
+## Velocity (ручной сценарий)
+
+1. Создайте сервер типа `velocity` (рекомендуемая версия 3.5.1, память ≥ 1024 МБ). Старт — прокси слушает порт из настроек, в консоли `Done (0,6s)!` и `Listening on /[...]:<port>` (не 25565 по умолчанию).
+2. Создайте `paper`-бэкенд, в Settings выберите созданный прокси в поле «Velocity proxy», сохраните.
+3. Старт бэкенда: `server.properties` → `server-ip=127.0.0.1`; слушается только `127.0.0.1`; после первого бута `config/paper-global.yml` патчится секретом (вступает в силу со второго старта — тогда в логе `Paper: Using Java compression/cipher from Velocity`).
+4. Проверка входа: подключитесь к прокси (порт прокси), а не к бэкенду; Motd в списке серверов — зелёное имя прокси.
+5. Ограничение: **modern forwarding требует клиенты/бэкенды 1.13+**; старые версии (например Beta 1.7.3) через прокси не зайдут — для них прокси не назначается.
 
 ## Известные ограничения среды тестирования
 

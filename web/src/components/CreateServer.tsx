@@ -9,6 +9,7 @@ const TYPES: { value: string; label: string }[] = [
   { value: "spigot", label: "Spigot" },
   { value: "forge", label: "Forge" },
   { value: "fabric", label: "Fabric" },
+  { value: "velocity", label: "Velocity" },
 ];
 
 export default function CreateServer({

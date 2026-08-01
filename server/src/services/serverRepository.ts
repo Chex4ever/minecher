@@ -18,10 +18,12 @@ interface ServerRow {
   java_args: string;
   server_props: string;
   port: number;
+  velocity_proxy_id: string | null;
   created_at: string;
   updated_at: string;
   last_started_at: string | null;
   last_stopped_at: string | null;
+  pid: number | null;
 }
 
 export interface ServerCreateInput {
@@ -37,6 +39,7 @@ export interface ServerCreateInput {
   javaPath?: string | null;
   javaArgs?: string[];
   serverProps?: Record<string, string>;
+  velocityProxyId?: string | null;
 }
 
 export interface ServerUpdateInput {
@@ -49,6 +52,7 @@ export interface ServerUpdateInput {
   javaPath?: string | null;
   javaArgs?: string[];
   serverProps?: Record<string, string>;
+  velocityProxyId?: string | null;
 }
 
 function toServer(row: ServerRow): MinecraftServer {
@@ -68,11 +72,12 @@ function toServer(row: ServerRow): MinecraftServer {
     javaArgs: JSON.parse(row.java_args) as string[],
     serverProps: JSON.parse(row.server_props) as Record<string, string>,
     port: row.port,
+    velocityProxyId: row.velocity_proxy_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     lastStartedAt: row.last_started_at,
     lastStoppedAt: row.last_stopped_at,
-    pid: null,
+    pid: row.pid,
     stats: null,
   };
 }
@@ -98,19 +103,21 @@ export class ServerRepository {
       java_args: input.javaArgs ? JSON.stringify(input.javaArgs) : "[]",
       server_props: input.serverProps ? JSON.stringify(input.serverProps) : "{}",
       port: input.port ?? 25565,
+      velocity_proxy_id: input.velocityProxyId ?? null,
       created_at: now,
       updated_at: now,
       last_started_at: null,
       last_stopped_at: null,
+      pid: null,
     };
     this.db
       .prepare(
         `INSERT INTO servers (id, name, type, version, jar_path, status, auto_start, auto_restart,
           restarts_count, java_path, memory_max_mb, memory_min_mb, java_args, server_props, port,
-          created_at, updated_at, last_started_at, last_stopped_at)
+          velocity_proxy_id, created_at, updated_at, last_started_at, last_stopped_at, pid)
          VALUES (@id, @name, @type, @version, @jar_path, @status, @auto_start, @auto_restart,
           @restarts_count, @java_path, @memory_max_mb, @memory_min_mb, @java_args, @server_props, @port,
-          @created_at, @updated_at, @last_started_at, @last_stopped_at)`,
+          @velocity_proxy_id, @created_at, @updated_at, @last_started_at, @last_stopped_at, @pid)`,
       )
       .run(row);
     return toServer(row);
@@ -150,16 +157,19 @@ export class ServerRepository {
       java_args: patch.javaArgs !== undefined ? JSON.stringify(patch.javaArgs) : JSON.stringify(existing.javaArgs),
       server_props: patch.serverProps !== undefined ? JSON.stringify(patch.serverProps) : JSON.stringify(existing.serverProps),
       port: patch.port ?? existing.port,
+      velocity_proxy_id: patch.velocityProxyId !== undefined ? patch.velocityProxyId : existing.velocityProxyId,
       created_at: existing.createdAt,
       updated_at: now,
       last_started_at: existing.lastStartedAt,
       last_stopped_at: existing.lastStoppedAt,
+      pid: existing.pid,
     };
     this.db
       .prepare(
         `UPDATE servers SET name=@name, auto_start=@auto_start, auto_restart=@auto_restart,
           java_path=@java_path, memory_max_mb=@memory_max_mb, memory_min_mb=@memory_min_mb,
-          java_args=@java_args, server_props=@server_props, port=@port, updated_at=@updated_at
+          java_args=@java_args, server_props=@server_props, port=@port, velocity_proxy_id=@velocity_proxy_id,
+          updated_at=@updated_at
           WHERE id=@id`,
       )
       .run(merged);
@@ -178,6 +188,12 @@ export class ServerRepository {
     this.db
       .prepare("UPDATE servers SET restarts_count=?, updated_at=? WHERE id=?")
       .run(count, new Date().toISOString(), id);
+  }
+
+  setPid(id: string, pid: number | null): void {
+    this.db
+      .prepare("UPDATE servers SET pid=?, updated_at=? WHERE id=?")
+      .run(pid, new Date().toISOString(), id);
   }
 
   delete(id: string): void {

@@ -11,7 +11,7 @@ export interface PortStatus {
 
 const IDLE: PortStatus = { port: null, available: true, usedBy: null, checking: false, error: null };
 
-export function usePortAvailability(port: number | null): PortStatus {
+export function usePortAvailability(port: number | null, excludeServerId?: string): PortStatus {
   const [state, setState] = useState<PortStatus>(IDLE);
 
   useEffect(() => {
@@ -23,7 +23,7 @@ export function usePortAvailability(port: number | null): PortStatus {
     setState((s) => ({ ...s, checking: true, error: null }));
     const timer = setTimeout(() => {
       void api
-        .checkPort(port)
+        .checkPort(port, excludeServerId)
         .then((res) => {
           if (!cancelled) {
             setState({ port, available: res.available, usedBy: res.usedBy, checking: false, error: null });
@@ -39,7 +39,7 @@ export function usePortAvailability(port: number | null): PortStatus {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [port]);
+  }, [port, excludeServerId]);
 
   return state;
 }

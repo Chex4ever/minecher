@@ -3,6 +3,7 @@ import type { AppConfig } from "../config.js";
 import type { ServerRepository } from "./serverRepository.js";
 import type { LogStore } from "./logStore.js";
 import { subDir } from "../config.js";
+import { RCON_PORT_OFFSET } from "./ports.js";
 
 interface Packet {
   type: number;
@@ -44,7 +45,7 @@ export class RconClient {
     if (props["enable-rcon"] !== "true") return null;
     return {
       host: "127.0.0.1",
-      port: Number(props["rcon.port"] ?? 25575),
+      port: server.port + RCON_PORT_OFFSET,
       password: props["rcon.password"] ?? "",
     };
   }

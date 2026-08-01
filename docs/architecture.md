@@ -40,7 +40,7 @@ Minecher — монорепозиторий на npm workspaces с двумя р
 | `backups.ts` | список/создание/восстановление/удаление бэкапов |
 | `schedules.ts` | CRUD расписаний + ручной RCON-эндпоинт |
 | `imports.ts` | импорт из папки/`.mcs`, экспорт в `.mcs` |
-| `ports.ts` | проверка доступности порта `GET /api/ports/:port` |
+| `ports.ts` | резервирование блока 5 портов на сервер (`port..port+4`: игровой, rcon, query, резерв), подбор свободного блока, проверка `GET /api/ports/:port` |
 
 Аутентификация — preHandler `authenticate` (JWT) + `requireRole`. WS-консоль принимает токен через `?token=` (браузер не умеет заголовки на WebSocket).
 

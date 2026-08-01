@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS servers (
   java_args TEXT NOT NULL DEFAULT '[]',
   server_props TEXT NOT NULL DEFAULT '{}',
   port INTEGER NOT NULL DEFAULT 25565,
+  velocity_proxy_id TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   last_started_at TEXT,
@@ -75,5 +76,16 @@ export function openDb(config: AppConfig): Db {
   const db = new Database(path.join(dbDir, "minecher.db"));
   db.pragma("journal_mode = WAL");
   db.exec(SCHEMA);
+  migrate(db);
   return db;
+}
+
+function migrate(db: Db): void {
+  const cols = db.prepare("PRAGMA table_info(servers)").all() as { name: string }[];
+  if (!cols.some((c) => c.name === "pid")) {
+    db.exec("ALTER TABLE servers ADD COLUMN pid INTEGER");
+  }
+  if (!cols.some((c) => c.name === "velocity_proxy_id")) {
+    db.exec("ALTER TABLE servers ADD COLUMN velocity_proxy_id TEXT");
+  }
 }

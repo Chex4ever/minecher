@@ -73,8 +73,10 @@ export const api = {
   versions: (type: string) => request<{ type: string; versions: string[] }>(`/versions/${type}`),
   loaders: (type: string, version: string) =>
     request<{ type: string; version: string; loaders: string[] }>(`/versions/${type}/${version}/loaders`),
-  checkPort: (port: number) =>
-    request<{ port: number; available: boolean; usedBy: string | null }>(`/ports/${port}`),
+  checkPort: (port: number, exclude?: string) => {
+    const qs = exclude ? `?exclude=${encodeURIComponent(exclude)}` : "";
+    return request<{ port: number; available: boolean; usedBy: string | null }>(`/ports/${port}${qs}`);
+  },
   createUser: (body: { username: string; password: string; role: string }) =>
     request<{ user: unknown }>("/auth/users", { method: "POST", body: JSON.stringify(body) }),
   importPath: (body: Record<string, unknown>) =>

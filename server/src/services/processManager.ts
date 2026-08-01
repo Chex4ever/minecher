@@ -11,6 +11,13 @@ import type { RconClient } from "./rcon.js";
 import { getSource } from "../versions/index.js";
 import { subDir, type AppConfig } from "../config.js";
 import { ensureBundledJava } from "./runtime.js";
+import { RCON_PORT_OFFSET, QUERY_PORT_OFFSET } from "./ports.js";
+import {
+  ensureVelocitySecret,
+  patchVelocityBackend,
+  renderVelocityToml,
+  sanitizeVelocityName,
+} from "./velocity.js";
 
 interface RunningServer {
   server: MinecraftServer;
@@ -27,6 +34,7 @@ interface RunningServer {
   playersMax: number;
   processBuffer?: string;
   restartsInWindow?: number;
+  proxyPatched?: boolean;
 }
 
 const JOIN_RE = /: ([0-9a-f-]{32,36}) joined the game/i;
@@ -68,6 +76,38 @@ export class ProcessManager {
     this.events.emitServerEvent({ type: "status", serverId: entry.server.id, status });
   }
 
+  async reconcile(): Promise<void> {
+    for (const server of this.db.all()) {
+      if (this.isRunning(server.id)) continue;
+      if (server.status === "stopped") continue;
+      const pid = server.pid;
+      const probe = pid != null ? await probeProcess(pid) : "gone";
+      try {
+        if (probe === "java" && pid != null) {
+          this.logs.append(
+            server.id,
+            "system",
+            `Daemon restarted: terminating orphan java process ${pid} left from previous instance`,
+          );
+          await killOrphan(pid);
+        } else {
+          this.logs.append(
+            server.id,
+            "system",
+            probe === "other"
+              ? `Stale status "${server.status}" reset to stopped (pid ${pid} now belongs to another process)`
+              : `Stale status "${server.status}" reset to stopped (daemon restarted, no live process)`,
+          );
+        }
+        this.db.setPid(server.id, null);
+        this.db.setStatus(server.id, "stopped", null, new Date().toISOString());
+        this.events.emitServerEvent({ type: "status", serverId: server.id, status: "stopped" });
+      } catch (err) {
+        this.logs.append(server.id, "system", `Status reconciliation failed: ${String(err)}`);
+      }
+    }
+  }
+
   async start(serverId: string): Promise<void> {
     const existing = this.running.get(serverId);
     if (existing && existing.status !== "stopped") {
@@ -80,7 +120,12 @@ export class ProcessManager {
     fs.mkdirSync(dir, { recursive: true });
 
     await this.ensureJar(server, dir);
-    this.writeServerProps(server, dir);
+    if (server.type === "velocity") {
+      this.writeVelocityConfig(server);
+    } else {
+      this.writeServerProps(server, dir);
+      this.configureVelocityBackend(server, dir);
+    }
 
     const java = await this.resolveJava(server);
 
@@ -100,6 +145,7 @@ export class ProcessManager {
     try {
       const proc = this.spawnJava(server, entry, dir, java);
       entry.process = proc;
+      this.db.setPid(serverId, proc.pid ?? null);
       this.setStatus(entry, "running");
       this.startStats(entry);
     } catch (err) {
@@ -123,7 +169,12 @@ export class ProcessManager {
     for (const [k, v] of Object.entries(server.serverProps)) byKey.set(k, v);
     byKey.set("online-mode", server.serverProps["online-mode"] ?? "false");
     byKey.set("server-port", String(server.port));
+    byKey.set("rcon.port", String(server.port + RCON_PORT_OFFSET));
+    byKey.set("query.port", String(server.port + QUERY_PORT_OFFSET));
     byKey.set("motd", `\u00a7a${server.name}`);
+    if (server.velocityProxyId) {
+      byKey.set("server-ip", "127.0.0.1");
+    }
     return byKey;
   }
 
@@ -138,6 +189,82 @@ export class ProcessManager {
       [...byKey.entries()].map(([k, v]) => `${k}=${v}`).join("\n") + "\n",
     );
     fs.writeFileSync(path.join(dir, "eula.txt"), "eula=true\n");
+  }
+
+  private writeVelocityConfig(proxy: MinecraftServer): void {
+    const dir = this.serverDir(proxy);
+    ensureVelocitySecret(dir);
+    const backends = this.db
+      .all()
+      .filter((s) => s.velocityProxyId === proxy.id && s.type !== "velocity")
+      .map((s) => ({
+        name: sanitizeVelocityName(s.name),
+        address: `127.0.0.1:${s.port}`,
+      }));
+    const used = new Set<string>();
+    for (const b of backends) {
+      let name = b.name;
+      let i = 2;
+      while (used.has(name)) name = `${b.name}_${i++}`;
+      used.add(name);
+      b.name = name;
+    }
+    fs.writeFileSync(
+      path.join(dir, "velocity.toml"),
+      renderVelocityToml({ port: proxy.port, motd: proxy.name, backends }),
+    );
+    this.logs.append(
+      proxy.id,
+      "system",
+      backends.length
+        ? `Velocity proxy configured with ${backends.length} backend(s)`
+        : "Velocity proxy started with no backends",
+    );
+  }
+
+  private configureVelocityBackend(server: MinecraftServer, dir: string): void {
+    if (!server.velocityProxyId) return;
+    const proxy = this.db.byId(server.velocityProxyId);
+    if (!proxy || proxy.type !== "velocity") {
+      throw new Error(
+        `Velocity proxy "${server.velocityProxyId}" not found; remove the proxy assignment in Settings`,
+      );
+    }
+    const secret = ensureVelocitySecret(this.serverDir(proxy));
+    patchVelocityBackend(dir, secret);
+    this.logs.append(
+      server.id,
+      "system",
+      `Configured as backend of Velocity "${proxy.name}" (expose only port ${proxy.port})`,
+    );
+  }
+
+  private patchPaperAfterBoot(server: MinecraftServer): void {
+    try {
+      if (!server.velocityProxyId) return;
+      const proxy = this.db.byId(server.velocityProxyId);
+      if (!proxy || proxy.type !== "velocity") return;
+      const dir = this.serverDir(server);
+      const secret = ensureVelocitySecret(this.serverDir(proxy));
+      patchVelocityBackend(dir, secret);
+      this.logs.append(
+        server.id,
+        "system",
+        "Patched paper config for Velocity modern forwarding (takes effect on next start)",
+      );
+    } catch (err) {
+      this.logs.append(
+        server.id,
+        "system",
+        `Failed to patch paper config for Velocity: ${String(err)}`,
+      );
+    }
+  }
+
+  velocityToml(server: MinecraftServer): string | null {
+    if (server.type !== "velocity") return null;
+    const file = path.join(this.serverDir(server), "velocity.toml");
+    return fs.existsSync(file) ? fs.readFileSync(file, "utf8") : null;
   }
 
   private async ensureJar(server: MinecraftServer, dir: string): Promise<void> {
@@ -204,7 +331,7 @@ export class ProcessManager {
       ...server.javaArgs,
       "-jar",
       jarName,
-      "nogui",
+      ...(server.type === "velocity" ? [] : ["nogui"]),
     ];
     this.logs.append(server.id, "system", `Starting: ${java} ${args.join(" ")}`);
 
@@ -236,6 +363,14 @@ export class ProcessManager {
     entry.processBuffer = lines.pop() ?? "";
     for (const line of lines) {
       if (line.trim()) this.logs.append(entry.server.id, stream, line);
+      if (
+        entry.server.velocityProxyId &&
+        !entry.proxyPatched &&
+        /Done \(/.test(line)
+      ) {
+        entry.proxyPatched = true;
+        this.patchPaperAfterBoot(entry.server);
+      }
       this.parsePlayers(entry, line);
     }
   }
@@ -342,6 +477,7 @@ export class ProcessManager {
 
     const wasStopping = entry.status === "stopping";
     this.running.delete(id);
+    this.db.setPid(id, null);
     this.db.setStatus(id, wasStopping ? "stopped" : "stopped", undefined, new Date().toISOString());
     this.logs.append(
       id,
@@ -437,6 +573,64 @@ export class ProcessManager {
 interface ProcessUsage {
   memMb: number;
   cpuMs: number;
+}
+
+async function probeProcess(pid: number): Promise<"java" | "other" | "gone"> {
+  if (process.platform === "win32") {
+    return new Promise((resolve) => {
+      const child = spawn(
+        "powershell",
+        [
+          "-NoProfile",
+          "-Command",
+          `$p = Get-Process -Id ${pid} -ErrorAction SilentlyContinue; if ($p) { $p.ProcessName }`,
+        ],
+        { windowsHide: true },
+      );
+      let out = "";
+      child.stdout?.on("data", (d: Buffer) => (out += d.toString()));
+      child.on("exit", () => {
+        const name = out.trim().toLowerCase();
+        if (!name) resolve("gone");
+        else resolve(name.includes("java") ? "java" : "other");
+      });
+      child.on("error", () => resolve("gone"));
+    });
+  }
+  try {
+    await fs.promises.access(`/proc/${pid}`);
+    const comm = (await fs.promises.readFile(`/proc/${pid}/comm`, "utf8")).trim().toLowerCase();
+    return comm.includes("java") ? "java" : "other";
+  } catch {
+    return "gone";
+  }
+}
+
+function processAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function killOrphan(pid: number): Promise<void> {
+  try {
+    process.kill(pid, "SIGTERM");
+  } catch {
+    return;
+  }
+  const deadline = Date.now() + 6000;
+  while (Date.now() < deadline) {
+    if (!processAlive(pid)) return;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  try {
+    process.kill(pid, "SIGKILL");
+  } catch {
+    /* ignore */
+  }
 }
 
 async function getProcessUsage(pid: number): Promise<ProcessUsage | null> {

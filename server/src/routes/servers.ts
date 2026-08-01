@@ -1,8 +1,24 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { AppContext } from "../services/context.js";
 import type { ServerCreateInput, ServerUpdateInput } from "../services/serverRepository.js";
-import { nextFreePort, isPortFree, validatePort } from "../services/ports.js";
+import { nextFreePort, isPortBlockFree, validatePort } from "../services/ports.js";
 import { authenticate, requireRole } from "./auth.js";
+
+function validateVelocityProxy(
+  ctx: AppContext,
+  id: string | null | undefined,
+  selfId?: string,
+): { ok: boolean; message?: string } {
+  if (!id) return { ok: true };
+  const proxy = ctx.servers.byId(id);
+  if (!proxy || proxy.type !== "velocity") {
+    return { ok: false, message: "velocityProxyId must reference an existing Velocity server" };
+  }
+  if (selfId && id === selfId) {
+    return { ok: false, message: "A Velocity proxy cannot be its own backend" };
+  }
+  return { ok: true };
+}
 
 export function serverRoutes(app: FastifyInstance, ctx: AppContext): void {
   app.get("/api/servers", { preHandler: [authenticate] }, async () => {
@@ -17,6 +33,9 @@ export function serverRoutes(app: FastifyInstance, ctx: AppContext): void {
   app.get("/api/servers/:id", { preHandler: [authenticate] }, async (request, reply) => {
     const server = ctx.servers.byId((request.params as { id: string }).id);
     if (!server) return reply.code(404).send({ error: "not_found", message: "Server not found" });
+    if (server.type === "velocity") {
+      return { server: { ...server, velocityTomlFile: ctx.processes.velocityToml(server) } };
+    }
     return { server: { ...server, serverPropsFile: ctx.processes.serverProps(server) } };
   });
 
@@ -33,10 +52,10 @@ export function serverRoutes(app: FastifyInstance, ctx: AppContext): void {
         if (!validatePort(port)) {
           return reply.code(400).send({ error: "bad_port", message: "Port must be 1-65535" });
         }
-        if (!(await isPortFree(port))) {
+        if (!(await isPortBlockFree(ctx.db, port))) {
           return reply.code(409).send({
             error: "port_busy",
-            message: `Port ${port} is already in use`,
+            message: `Port block ${port}-${port + 4} is not fully free`,
           });
         }
       } else {
@@ -45,6 +64,10 @@ export function serverRoutes(app: FastifyInstance, ctx: AppContext): void {
         } catch (err) {
           return reply.code(409).send({ error: "no_free_port", message: String(err) });
         }
+      }
+      const proxyCheck = validateVelocityProxy(ctx, body.velocityProxyId);
+      if (!proxyCheck.ok) {
+        return reply.code(400).send({ error: "invalid_proxy", message: proxyCheck.message });
       }
       const server = ctx.servers.create({ ...body, port }, body.loaderVersion);
       ctx.events.emitServerEvent({ type: "created", server });
@@ -57,7 +80,31 @@ export function serverRoutes(app: FastifyInstance, ctx: AppContext): void {
     { preHandler: [authenticate, requireRole("operator")] },
     async (request, reply) => {
       const body = request.body as ServerUpdateInput;
-      const server = ctx.servers.update((request.params as { id: string }).id, body);
+      const id = (request.params as { id: string }).id;
+      const existing = ctx.servers.byId(id);
+      if (!existing) return reply.code(404).send({ error: "not_found", message: "Server not found" });
+      if (body.port !== undefined && body.port !== existing.port) {
+        if (!validatePort(body.port)) {
+          return reply.code(400).send({ error: "bad_port", message: "Port must be 1-65535" });
+        }
+        if (!(await isPortBlockFree(ctx.db, body.port, id))) {
+          return reply.code(409).send({
+            error: "port_busy",
+            message: `Port block ${body.port}-${body.port + 4} is not fully free`,
+          });
+        }
+      }
+      if (existing.type === "velocity" && body.velocityProxyId !== undefined) {
+        return reply.code(400).send({
+          error: "invalid_proxy",
+          message: "A Velocity proxy cannot be a backend of another proxy",
+        });
+      }
+      const proxyCheck = validateVelocityProxy(ctx, body.velocityProxyId, id);
+      if (!proxyCheck.ok) {
+        return reply.code(400).send({ error: "invalid_proxy", message: proxyCheck.message });
+      }
+      const server = ctx.servers.update(id, body);
       if (!server) return reply.code(404).send({ error: "not_found", message: "Server not found" });
       ctx.events.emitServerEvent({ type: "updated", server });
       return { server };
@@ -75,6 +122,11 @@ export function serverRoutes(app: FastifyInstance, ctx: AppContext): void {
         await ctx.processes.stop(id, { force: true });
       }
       ctx.servers.delete(id);
+      if (server.type === "velocity") {
+        for (const backend of ctx.servers.all().filter((s) => s.velocityProxyId === id)) {
+          ctx.servers.update(backend.id, { velocityProxyId: null });
+        }
+      }
       ctx.events.emitServerEvent({ type: "deleted", serverId: id });
       return reply.code(204).send();
     },

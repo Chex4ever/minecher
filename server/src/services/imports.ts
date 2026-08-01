@@ -11,7 +11,7 @@ import type { ServerRepository } from "./serverRepository.js";
 import type { ProcessManager } from "./processManager.js";
 import type { LogStore } from "./logStore.js";
 import { subDir } from "../config.js";
-import { isPortFree, nextFreePort, validatePort } from "./ports.js";
+import { isPortBlockFree, nextFreePort, validatePort } from "./ports.js";
 
 const require = createRequire(import.meta.url);
 const archiver = require("archiver") as { ZipArchive: typeof ZipArchive };
@@ -19,7 +19,7 @@ const archiver = require("archiver") as { ZipArchive: typeof ZipArchive };
 const MCS_FORMAT = 1;
 
 const COPY_EXCLUDE = new Set(["logs", "backups", "session.lock", "usercache.json", "mcs.json"]);
-const EXPORT_EXCLUDE = ["logs/**", "**/*.log", "session.lock"];
+const EXPORT_EXCLUDE = ["logs/**", "**/*.log", "session.lock", "forwarding.secret"];
 
 export interface ImportPathInput {
   path: string;
@@ -45,6 +45,7 @@ export interface McSMetadata {
   port: number;
   autoStart: boolean;
   autoRestart: boolean;
+  velocityProxyId?: string | null;
   exportedAt: string;
 }
 
@@ -92,6 +93,14 @@ function readProps(dir: string): Map<string, string> {
   return byKey;
 }
 
+function resolveVelocityProxy(db: Db, id?: string | null): string | null {
+  if (!id) return null;
+  const row = db.prepare("SELECT id FROM servers WHERE id=? AND type='velocity'").get(id) as
+    | { id: string }
+    | undefined;
+  return row ? id : null;
+}
+
 function dirSize(dir: string): number {
   let total = 0;
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -111,17 +120,10 @@ export class ImportService {
     private logs: LogStore,
   ) {}
 
-  private takenPorts(): Set<number> {
-    return new Set(
-      (this.db.prepare("SELECT port FROM servers").all() as { port: number }[]).map((r) => r.port),
-    );
-  }
-
   private async pickPort(requested?: number, propsDir?: string, prefer?: number): Promise<number> {
-    const taken = this.takenPorts();
     if (requested !== undefined) {
       if (!validatePort(requested)) throw new Error("Port must be 1-65535");
-      if (taken.has(requested) || !(await isPortFree(requested))) {
+      if (!(await isPortBlockFree(this.db, requested))) {
         throw new Error(`Port ${requested} is already in use`);
       }
       return requested;
@@ -133,7 +135,7 @@ export class ImportService {
       if (validatePort(fromProps) && !candidates.includes(fromProps)) candidates.push(fromProps);
     }
     for (const p of candidates) {
-      if (!taken.has(p) && (await isPortFree(p))) return p;
+      if (await isPortBlockFree(this.db, p)) return p;
     }
     return nextFreePort(this.db, 25565);
   }
@@ -216,6 +218,7 @@ export class ImportService {
           serverProps: meta.serverProps && typeof meta.serverProps === "object" ? meta.serverProps : {},
           autoStart: !!meta.autoStart,
           autoRestart: meta.autoRestart !== false,
+          velocityProxyId: resolveVelocityProxy(this.db, meta.velocityProxyId),
         },
         undefined,
       );
@@ -257,6 +260,7 @@ export class ImportService {
       port: server.port,
       autoStart: server.autoStart,
       autoRestart: server.autoRestart,
+      velocityProxyId: server.velocityProxyId,
       exportedAt: new Date().toISOString(),
     };
 

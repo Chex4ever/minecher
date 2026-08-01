@@ -7,13 +7,15 @@ import { usePortAvailability, PortBadge } from "../hooks/usePortAvailability";
 export default function Settings({ serverId }: { serverId: string }) {
   const { canOperate } = useAuth();
   const [server, setServer] = useState<MinecraftServer | null>(null);
+  const [proxies, setProxies] = useState<MinecraftServer[]>([]);
+  const [proxyId, setProxyId] = useState("");
   const [javaArgs, setJavaArgs] = useState("");
   const [propsText, setPropsText] = useState("");
   const [autoStart, setAutoStart] = useState(false);
   const [autoRestart, setAutoRestart] = useState(true);
   const [memory, setMemory] = useState(1024);
   const [port, setPort] = useState(25565);
-  const portStatus = usePortAvailability(Number.isInteger(port) ? port : null);
+  const portStatus = usePortAvailability(Number.isInteger(port) ? port : null, serverId);
   const [javaPath, setJavaPath] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -34,8 +36,13 @@ export default function Settings({ serverId }: { serverId: string }) {
         setMemory(server.memoryMaxMb);
         setPort(server.port);
         setJavaPath(server.javaPath ?? "");
+        setProxyId(server.velocityProxyId ?? "");
       })
       .catch((e) => setError(e.message));
+    api
+      .listServers()
+      .then(({ servers }) => setProxies(servers.filter((s) => s.type === "velocity")))
+      .catch(() => setProxies([]));
   }, [serverId]);
 
   const save = async () => {
@@ -47,7 +54,7 @@ export default function Settings({ serverId }: { serverId: string }) {
         const idx = line.indexOf("=");
         if (idx > 0) serverProps[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
       }
-      const { server } = await api.updateServer(serverId, {
+      const body: Record<string, unknown> = {
         autoStart,
         autoRestart,
         memoryMaxMb: memory,
@@ -56,8 +63,12 @@ export default function Settings({ serverId }: { serverId: string }) {
         javaPath: javaPath || null,
         javaArgs: javaArgs.split(/\s+/).filter(Boolean),
         serverProps,
-      });
-      setServer(server);
+      };
+      if (server?.type !== "velocity") {
+        body.velocityProxyId = proxyId || null;
+      }
+      const { server: updated } = await api.updateServer(serverId, body);
+      setServer(updated);
       setMessage("Saved");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save");
@@ -94,10 +105,38 @@ export default function Settings({ serverId }: { serverId: string }) {
           Extra JVM args
           <input value={javaArgs} onChange={(e) => setJavaArgs(e.target.value)} placeholder="-XX:+UseG1GC -XX:+DisableExplicitGC" disabled={!canOperate} />
         </label>
-        <label className="span2">
-          server.properties
-          <textarea rows={10} value={propsText} onChange={(e) => setPropsText(e.target.value)} disabled={!canOperate} spellCheck={false} />
-        </label>
+        {server.type === "velocity" ? (
+          <label className="span2">
+            velocity.toml (generated on start)
+            <textarea
+              rows={10}
+              value={server.velocityTomlFile ?? "velocity.toml is generated when the proxy starts"}
+              readOnly
+              spellCheck={false}
+            />
+          </label>
+        ) : (
+          <>
+            <label className="span2">
+              Velocity proxy (backends must be reachable only through the proxy)
+              <select value={proxyId} onChange={(e) => setProxyId(e.target.value)} disabled={!canOperate}>
+                <option value="">None</option>
+                {proxies.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} (:{p.port})
+                  </option>
+                ))}
+              </select>
+              {proxies.length === 0 && (
+                <span className="muted">No Velocity server exists yet — create one first, then assign it here.</span>
+              )}
+            </label>
+            <label className="span2">
+              server.properties
+              <textarea rows={10} value={propsText} onChange={(e) => setPropsText(e.target.value)} disabled={!canOperate} spellCheck={false} />
+            </label>
+          </>
+        )}
       </div>
       {message && <div className="ok">{message}</div>}
       {error && <div className="error">{error}</div>}

@@ -43,7 +43,7 @@
 
 ### GET `/servers/:id`
 → `200` `{ "server": MinecraftServer }`
-Дополнительное поле `server.serverPropsFile` — фактическое содержимое `server.properties` с диска (эффективные значения: `online-mode`, `server-port`, `motd` и др.), для вкладки Settings.
+Дополнительные поля: `server.serverPropsFile` — фактическое содержимое `server.properties` с диска (эффективные значения: `online-mode`, `server-port`, `motd` и др.), для вкладки Settings. Для типа `velocity` вместо него отдаётся `velocityTomlFile` — сгенерированный на старте `velocity.toml` (только для чтения).
 
 ### POST `/servers` *(operator)*
 ```json
@@ -57,30 +57,35 @@
   "memoryMaxMb": 2048,
   "memoryMinMb": 2048,
   "port": 25565,
-  "javaPath": null
+  "javaPath": null,
+  "velocityProxyId": "..."          // опционально: id velocity-прокси (бэкенд)
 }
 ```
 → `201` `{ "server": MinecraftServer }`
 
-Типы: `vanilla | paper | spigot | forge | fabric | custom`. `loaderVersion` для vanilla/paper/spigot/custom игнорируется. Для `custom` jar не скачивается — сервер использует существующий `server.jar`/`fabric-server.jar` из своей рабочей директории.
+Типы: `vanilla | paper | spigot | forge | fabric | velocity | custom`. `loaderVersion` для vanilla/paper/spigot/velocity/custom игнорируется. Для `custom` jar не скачивается — сервер использует существующий `server.jar`/`fabric-server.jar` из своей рабочей директории. Для `velocity` скачивается jar Velocity (рекомендуется 3.5.1, требует Java 21+; встроенный JRE — Temurin 25).
 
-Порт: если `port` не указан — сервер сам выбирает первый свободный порт, начиная с `25565` (перебирает `port+1`). Если порт указан и занят → `409` `{ "error": "port_busy", "message": "Port N is already in use" }`. Если заняты все порты в диапазоне +50 → `409` `{ "error": "no_free_port" }`.
+`velocityProxyId` — id существующего сервера типа `velocity`; если не `null`, сервер запускается как бэкенд прокси: `server-ip` принудительно `127.0.0.1`, в `config/paper-global.yml`/`paper.yml` включается Velocity modern forwarding с секретом прокси. Неверный id → `400` `{ "error": "invalid_proxy" }`.
+
+Порт: если `port` не указан — сервер сам выбирает первый свободный блок портов, начиная с `25565`. Каждый сервер резервирует **блок из 5 последовательных портов**: `port` (игровой `server-port`), `port+1` (`rcon.port`), `port+2` (`query.port`), `port+3`/`port+4` (резерв). Если `port` указан, но весь блок не свободен (занят ОС или пересекается с блоком другого сервера) → `409` `{ "error": "port_busy", "message": "Port block N-M is not fully free" }`. Если заняты все блоки в диапазоне +50 → `409` `{ "error": "no_free_port" }`.
 
 ### GET `/ports/:port`
-Проверка доступности порта (для UI-индикатора). Запроса требует токен.
+Проверка доступности порта (для UI-индикатора). Запроса требует токен. Опциональный query-параметр `?exclude=<serverId>` — исключить блок текущего сервера из проверки (используется во вкладке Settings, чтобы собственный порт сервера не считался занятым).
 → `200` `{ "port": 25565, "available": true, "usedBy": null }`
-`available: false`, если порт занят ОС или уже используется запущенным сервером minecher; тогда `usedBy` — имя сервера.
+`available: false`, если какой-либо порт блока `port..port+4` занят ОС или входит в блок другого сервера minecher (запущенного или остановленного); тогда `usedBy` — имя первого такого сервера.
 
 ### PATCH `/servers/:id` *(operator)*
-Частичное обновление полей: `name`, `autoStart`, `autoRestart`, `memoryMaxMb`, `memoryMinMb`, `port`, `javaPath`, `javaArgs: string[]`, `serverProps: Record<string,string>`.
+Частичное обновление полей: `name`, `autoStart`, `autoRestart`, `memoryMaxMb`, `memoryMinMb`, `port`, `javaPath`, `javaArgs: string[]`, `serverProps: Record<string,string>`, `velocityProxyId: string|null` (назначить бэкенд прокси / отвязать).
+При смене `port` блок `port..port+4` проверяется на свободность (см. выше) — конфликт → `409` `{ "error": "port_busy" }`.
+`velocityProxyId` должен ссылаться на существующий velocity-сервер (`400 invalid_proxy`); сам velocity-прокси не может быть бэкендом (`400 invalid_proxy`).
 → `200` `{ "server": MinecraftServer }`
 
 ### DELETE `/servers/:id` *(admin)*
-Останавливает сервер (force), удаляет запись. Файлы остаются на диске.
+Останавливает сервер (force), удаляет запись. Если удаляется velocity-прокси — у всех бэкендов `velocityProxyId` сбрасывается в `null`. Файлы остаются на диске.
 → `204`
 
 ### POST `/servers/:id/start` *(operator)*
-Скачивает jar при необходимости (Forge — прогоняет installer), пишет `server.properties`, запускает java. Java: `javaPath` (если задан) → встроенный JRE → системный. Первый старт любого сервера без `javaPath` качает JRE Temurin.
+Скачивает jar при необходимости (Forge — прогоняет installer), пишет конфигурацию и запускает java. Для обычных серверов синтезируется `server.properties` (+ `eula.txt`); для `velocity` — `velocity.toml` и `forwarding.secret`; для бэкенда за прокси дополнительно патчится `config/paper-global.yml`/`paper.yml` (modern forwarding) и `server-ip=127.0.0.1`. Java: `javaPath` (если задан) → встроенный JRE → системный. Первый старт любого сервера без `javaPath` качает JRE Temurin.
 → `200` `{ "ok": true }` | `500` `{ "error": "start_failed", ... }`
 
 ### POST `/servers/:id/stop` *(operator)*
@@ -124,7 +129,7 @@ Graceful stop через stdin `stop`, затем kill/SIGKILL.
 ## Версии
 
 ### GET `/versions`
-→ `200` `{ "types": ["vanilla","paper","spigot","forge","fabric","custom"] }`
+→ `200` `{ "types": ["vanilla","paper","spigot","forge","fabric","velocity","custom"] }`
 
 ### GET `/versions/:type`
 → `200` `{ "type": "paper", "versions": ["26.2", "..."] }` | `502`, если внешний источник недоступен.
@@ -192,10 +197,11 @@ Graceful stop через stdin `stop`, затем kill/SIGKILL.
 Импорт из архива minecher `.mcs` (multipart/form-data).
 - Поле `file` — файл `.mcs` (обязательно).
 - Опциональные поля: `name` (имя сервера), `port` (порт; если не задан и порт из метаданных занят — автоматически подбирается свободный).
+- Связка `velocityProxyId` из манифеста восстанавливается только если прокси с таким id существует; иначе `null`.
 → `201` `{ "server": MinecraftServer }` | `400` `{ "error": "import_failed", ... }` (нет файла, не `.mcs`, `mcs.json` отсутствует, неподдерживаемый `format`).
 
 ### GET `/servers/:id/export` *(operator)*
-Экспорт сервера в `.mcs`-архив (zip: `mcs.json` — манифест, остальное — файлы сервера, кроме `logs/**`, `*.log`, `session.lock`). Сервер должен быть остановлен.
+Экспорт сервера в `.mcs`-архив (zip: `mcs.json` — манифест, остальное — файлы сервера, кроме `logs/**`, `*.log`, `session.lock`, `forwarding.secret`). Сервер должен быть остановлен. Манифест содержит `velocityProxyId` (восстанавливается при импорте только если такой прокси существует).
 → `200` `application/zip` (Content-Disposition `attachment`) | `400` `{ "error": "export_failed", ... }`.
 
 ## RCON
@@ -204,5 +210,5 @@ Graceful stop через stdin `stop`, затем kill/SIGKILL.
 ```json
 { "command": "list" }
 ```
-Используется, если в `serverProps` задано `enable-rcon=true`, `rcon.port`, `rcon.password`.
+Используется, если в `serverProps` задано `enable-rcon=true` и `rcon.password`. Порт RCON принудительно равен `server.port + 1` (см. резервирование блока портов).
 → `200` `{ "ok": true, "response": "<вывод команды>" }` | `409`, если RCON недоступен.

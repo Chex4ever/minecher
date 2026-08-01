@@ -119,6 +119,7 @@ async function main(): Promise<void> {
   await app.listen({ host: config.host, port: config.port });
 
   scheduler.start();
+  await processes.reconcile();
   autoStartAll(ctx);
 }
 
@@ -150,3 +151,4 @@ main().catch((err) => {
   console.error(err);
   process.exit(1);
 });
+

@@ -8,9 +8,11 @@
 data/
   minecher.db                SQLite (WAL) — на самом деле в подпапке db/ (см. ниже)
   servers/<id>/              рабочая директория java-процесса
-    server.jar               jar сервера (или fabric-server.jar; для forge — installer)
-    server.properties        синтезируется на старте: существующие ключи + online-mode=false (по умолч.) + port/motd
+    server.jar               jar сервера (или fabric-server.jar; для forge — installer; для velocity — velocity-3.x.jar → server.jar)
+    server.properties        синтезируется на старте: существующие ключи + online-mode=false (по умолч.) + port/motd + rcon.port (port+1) / query.port (port+2)
     eula.txt                 пишется с eula=true при каждом старте
+    velocity.toml            (velocity) синтезируется на старте: offline, modern forwarding, бэкенды из velocityProxyId
+    forwarding.secret        (velocity) секрет modern forwarding (генерируется при первом старте, 32 байта hex)
     world/, world_nether/    миры
     libraries/               (forge) зависимости после --installServer
   versions/<type>/           кэш скачанных jar: <version>.jar | <version>-<loader>.jar
@@ -44,10 +46,11 @@ data/
   "port": 25566,
   "autoStart": false,
   "autoRestart": true,
+  "velocityProxyId": null,
   "exportedAt": "2026-07-31T20:03:16.429Z"
 }
 ```
-При импорте, если заданный/мета-порт занят и порт не указан пользователем явно — выбирается свободный.
+При импорте, если заданный/мета-порт занят и порт не указан пользователем явно — выбирается свободный блок (см. резервирование 5 портов на сервер). `velocityProxyId` восстанавливается только при наличии прокси с таким id.
 
 ## Схема SQLite
 
@@ -63,7 +66,7 @@ users(
 servers(
   id             TEXT PRIMARY KEY,
   name           TEXT NOT NULL,
-  type           TEXT NOT NULL,       -- vanilla|paper|spigot|forge|fabric|custom
+  type           TEXT NOT NULL,       -- vanilla|paper|spigot|forge|fabric|velocity|custom
   version        TEXT NOT NULL,
   jar_path       TEXT,                -- "<version>" или "<version>-<loader>"
   status         TEXT NOT NULL DEFAULT 'stopped',
@@ -75,11 +78,13 @@ servers(
   memory_min_mb  INTEGER NOT NULL DEFAULT 1024,
   java_args      TEXT NOT NULL,       -- JSON string[]
   server_props   TEXT NOT NULL,       -- JSON Record<string,string>
-  port           INTEGER NOT NULL DEFAULT 25565,
+  port           INTEGER NOT NULL DEFAULT 25565,   -- начало блока из 5 портов: port, +1 rcon, +2 query, +3/+4 резерв
+  velocity_proxy_id TEXT,             -- id velocity-прокси, за которым запускается этот бэкенд (NULL — не бэкенд)
   created_at     TEXT NOT NULL,
   updated_at     TEXT NOT NULL,
   last_started_at TEXT,
-  last_stopped_at  TEXT
+  last_stopped_at  TEXT,
+  pid            INTEGER,             -- pid последнего java-процесса; для сверки статусов при старте демона
 )
 
 log_index(

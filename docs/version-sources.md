@@ -38,6 +38,12 @@ interface VersionSource {
 - MC-версии: `game[]` со `stable === true`; лоадеры: `loader[].version`.
 - Jar (прямая ссылка): `https://meta.fabricmc.net/v2/versions/loader/<mc>/<loader>/<installer>/server/jar`.
 
+## Velocity
+- **Только Fill v3.** `https://fill.papermc.io/v3/projects/velocity` (для PaperMC заполнен как проект `velocity`; `api.papermc.io/v2` вернул 410).
+- Список версий: `versions` — объект `{ "<группа>": [...] }` (4.0.0, 3.0.0, 1.1.0, 1.0.0); SNAPSHOT-версии отфильтровываются, сортировка по semver по убыванию. Рекомендуемая стабильная — **3.5.1** (Java 21+).
+- Jar: `GET /v3/projects/velocity/versions/<version>/builds` → сборка с `channel === "RECOMMENDED"` (или `STABLE`) → `downloads["server:default"].url`.
+- Конфиг `velocity.toml` генерируется minecher (см. ADR-019); требует Java 21+ (встроенный JRE Temurin 25 подходит).
+
 ## Custom
 - «Свой сервер»: пустой источник (`listVersions: []`, `listLoaderVersions: []`).
 - `resolveJar` бросает `VersionSourceError` — jar не скачивается, старт требует существующий `server.jar`/`fabric-server.jar` в рабочей директории (используется для импортированных серверов).

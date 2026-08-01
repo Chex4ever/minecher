@@ -5,6 +5,7 @@ import { PaperSource } from "./paper.js";
 import { SpigotSource } from "./spigot.js";
 import { ForgeSource } from "./forge.js";
 import { FabricSource } from "./fabric.js";
+import { VelocitySource } from "./velocity.js";
 import { CustomSource } from "./custom.js";
 
 const sources: Record<ServerType, VersionSource> = {
@@ -13,6 +14,7 @@ const sources: Record<ServerType, VersionSource> = {
   spigot: new SpigotSource(),
   forge: new ForgeSource(),
   fabric: new FabricSource(),
+  velocity: new VelocitySource(),
   custom: new CustomSource(),
 };
 
