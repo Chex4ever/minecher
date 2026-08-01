@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { MinecraftServer, ServerType } from "@minecher/types";
-import { api } from "../api";
+import { api, avatarUrl } from "../api";
 import { useAuth } from "../auth";
 import CreateServer from "../components/CreateServer";
 import ImportServer from "../components/ImportServer";
@@ -58,9 +58,10 @@ export default function Dashboard() {
       <header className="topbar">
         <h1>Minecher</h1>
         <div className="spacer" />
-        <span className="muted">
+        <Link className="muted user-link" to="/settings">
+          {session?.avatar && <img className="avatar-sm" src={avatarUrl(session.avatar) ?? undefined} alt="" />}
           {session?.username} ({session?.role})
-        </span>
+        </Link>
         <Link className="button ghost" to="/launcher">
           Launcher
         </Link>

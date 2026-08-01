@@ -15,6 +15,7 @@
     "dev:types": "tsc -w -p packages/types/tsconfig.json",
     "dev:server": "npm run dev -w server",
     "dev:web": "npm run dev -w web",
+    "start": "npm run build -w web && concurrently -k -n server,web \"npm run dev:server\" \"npm run preview -w web\"",
     "typecheck": "npm run build:types && npm run typecheck --workspaces --if-present"
   },
   "devDependencies": {

@@ -55,11 +55,17 @@ Invoke-WebRequest "$base/imports/mcs" -Method Post -Headers $h -Form @{ file = G
 | Сценарий | Результат |
 |---|---|
 | `GET /api/health`, `POST /api/auth/login` (admin/admin) | 200, валидный JWT |
+| `PATCH /api/auth/me` (username+email) | 200 `{user, token}` — JWT обновлён (username в payload), `email` сохраняется |
+| `POST /api/auth/me/password` | 200 `{ok:true}`; старый пароль после смены → 401; неверный текущий → 401 |
+| `POST /api/auth/me/avatar` (multipart png) → `GET /api/auth/avatars/:file?token=` → `DELETE` | upload 200 (`avatar=/api/auth/avatars/<id>.png`), GET 200 (image/png, 67 байт), delete 200 (`avatar:null`), GET после delete → 404; DELETE без токена → 401; невалидное имя файла → 404 |
 | `POST /api/servers` + `GET /api/servers` | сервер создан и виден |
 | `GET /api/versions/paper` (Fill v3) | 66 версий, новейшая корректная |
 | `GET /api/versions/vanilla` | 102 релизные версии |
 | `GET /api/versions/:type/:version/loaders` (forge/fabric) | список лоадеров |
 | WS `/api/servers/:id/console?token=...` | приходит `{"type":"tail"}`; Node 24 глобальный WebSocket |
+| WS через `vite preview`-прокси (`:5173`) + heartbeat | OPEN, `tail` (100 записей), серверный ping каждые ~20 с (2 цикла), соединение живо; локально и через LAN — без разрывов |
+| Клиентский реконнект консоли | экспоненциальный backoff (0.5–5 с), статус «Connection lost — reconnecting…» (проверен typecheck/build; браузерный сценарий обрыва не воспроизводился) |
+| `npm run start` (одна команда) | собирает web, поднимает бэкенд `:8080` + `vite preview :5173`, логин через прокси доходит до бэкенда |
 | `POST .../schedules` валидный cron | 201 |
 | `POST .../schedules` некорректный cron | 400 `bad_cron` |
 | `POST .../backups` → list → restore | zip создаётся (без logs/jar), restore атомарно заменяет каталог, `world/level.dat` на месте |

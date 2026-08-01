@@ -45,11 +45,30 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 export const api = {
   request: <T,>(path: string, options: RequestInit = {}): Promise<T> => request<T>(path, options),
   login: (username: string, password: string) =>
-    request<{ token: string; user: { id: string; username: string; role: string } }>("/auth/login", {
+    request<{ token: string; user: import("@minecher/types").User }>("/auth/login", {
       method: "POST",
       body: JSON.stringify({ username, password }),
     }),
-  me: () => request<{ user: { id: string; username: string; role: string } }>("/auth/me"),
+  me: () => request<{ user: import("@minecher/types").User }>("/auth/me"),
+  updateProfile: (body: { username?: string; email?: string | null }) =>
+    request<{ user: import("@minecher/types").User; token?: string }>("/auth/me", {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    request<{ ok: boolean }>("/auth/me/password", {
+      method: "POST",
+      body: JSON.stringify({ currentPassword, newPassword }),
+    }),
+  uploadAvatar: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<{ user: import("@minecher/types").User }>("/auth/me/avatar", {
+      method: "POST",
+      body: form,
+    });
+  },
+  removeAvatar: () => request<{ user: import("@minecher/types").User }>("/auth/me/avatar", { method: "DELETE" }),
   listServers: () => request<{ servers: import("@minecher/types").MinecraftServer[] }>("/servers"),
   getServer: (id: string) => request<{ server: import("@minecher/types").MinecraftServer }>(`/servers/${id}`),
   createServer: (body: Record<string, unknown>) =>
@@ -153,4 +172,10 @@ export function consoleUrl(serverId: string): string {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   const token = getToken();
   return `${protocol}//${window.location.host}/api/servers/${serverId}/console?token=${encodeURIComponent(token ?? "")}`;
+}
+
+export function avatarUrl(avatar: string | null): string | null {
+  if (!avatar) return null;
+  if (avatar.startsWith("data:") || avatar.startsWith("http://") || avatar.startsWith("https://")) return avatar;
+  return `${avatar}?token=${encodeURIComponent(getToken() ?? "")}`;
 }

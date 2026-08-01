@@ -68,17 +68,7 @@ async function install(config: AppConfig, log: (msg: string) => void, feature: s
   fs.mkdirSync(tmp, { recursive: true });
   try {
     log("Extracting Java runtime...");
-    if (os === "windows") {
-      await execFileAsync("powershell", [
-        "-NoProfile",
-        "-Command",
-        `Expand-Archive -LiteralPath '${archive}' -DestinationPath '${tmp}' -Force`,
-      ]);
-    } else {
-      await execFileAsync("tar", ["-xzf", archive, "-C", tmp]);
-    }
-    const jre = findJavaHome(tmp);
-    if (!jre) throw new Error("Java runtime archive did not contain bin/java");
+    const jre = await extractWithRetry(archive, tmp, os, log);
     const target = path.join(runtimeDir, "jre");
     if (fs.existsSync(target)) fs.rmSync(target, { recursive: true, force: true });
     fs.renameSync(jre, target);
@@ -103,6 +93,34 @@ function findJavaHome(dir: string, depth = 0): string | null {
     if (found) return found;
   }
   return null;
+}
+
+async function extractWithRetry(
+  archive: string,
+  dest: string,
+  os: string,
+  log: (msg: string) => void,
+): Promise<string> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      if (os === "windows") {
+        await execFileAsync("tar", ["-xf", archive, "-C", dest]);
+      } else {
+        await execFileAsync("tar", ["-xzf", archive, "-C", dest]);
+      }
+    } catch (err) {
+      for (const entry of fs.readdirSync(dest)) {
+        fs.rmSync(path.join(dest, entry), { recursive: true, force: true });
+      }
+      if (attempt >= 3) throw err;
+      log(`Java runtime extraction failed (attempt ${attempt}/3); retrying...`);
+      continue;
+    }
+    const jre = findJavaHome(dest);
+    if (jre) return jre;
+    if (attempt >= 3) throw new Error("Java runtime archive did not contain bin/java");
+    log("Java runtime extraction incomplete; retrying...");
+  }
 }
 
 async function download(url: string, target: string): Promise<void> {

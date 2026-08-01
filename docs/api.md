@@ -16,11 +16,32 @@
 ```
 → `200`
 ```json
-{ "token": "<jwt>", "user": { "id": "...", "username": "admin", "role": "admin" } }
+{ "token": "<jwt>", "user": { "id": "...", "username": "admin", "role": "admin", "email": null, "avatar": null } }
 ```
 
 ### GET `/auth/me`
-→ `200` `{ "user": { ... } }`
+→ `200` `{ "user": { "id", "username", "role", "email", "avatar", "createdAt" } }` (читается свежим из БД)
+
+### PATCH `/auth/me`
+```json
+{ "username": "admin2", "email": "a@b.com" }
+```
+→ `200` `{ "user": { ... }, "token": "<jwt>" }` — `token` присутствует и обязателен для замены текущего, если `username` изменён (JWT содержит username). `email` — `string | null`, формат `email@host` (минимум, без валидации домена). `username` — 3–32 символа, `[A-Za-z0-9_-]`, уникальный; конфликт → `409`.
+
+### POST `/auth/me/password`
+```json
+{ "currentPassword": "admin", "newPassword": "secret1" }
+```
+→ `200` `{ "ok": true }`. Неверный текущий пароль → `401`; `newPassword` короче 6 символов → `400`.
+
+### POST `/auth/me/avatar`
+`multipart/form-data`, поле `file` (png/jpg/jpeg/gif/webp, до 2 МБ). → `200` `{ "user": { ..., "avatar": "/api/auth/avatars/<userId>.<ext>" } }`. Замена файла: старый удаляется, расширение может смениться (старое значение `avatar` инвалидируется).
+
+### DELETE `/auth/me/avatar`
+→ `200` `{ "user": { ..., "avatar": null } }` (удаляет файл аватара).
+
+### GET `/auth/avatars/:file` *(токен через Bearer или `?token=`)*
+→ `200` `image/*` (файл аватара). Имя файла валидируется по `^[0-9a-f-]+\.(png|jpe?g|gif|webp)$` — иначе `404`.
 
 ### POST `/auth/users` *(admin)*
 ```json

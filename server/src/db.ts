@@ -10,6 +10,8 @@ CREATE TABLE IF NOT EXISTS users (
   username TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
   role TEXT NOT NULL DEFAULT 'viewer',
+  email TEXT,
+  avatar TEXT,
   created_at TEXT NOT NULL
 );
 
@@ -103,5 +105,12 @@ function migrate(db: Db): void {
   }
   if (!cols.some((c) => c.name === "velocity_proxy_id")) {
     db.exec("ALTER TABLE servers ADD COLUMN velocity_proxy_id TEXT");
+  }
+  const usersCols = db.prepare("PRAGMA table_info(users)").all() as { name: string }[];
+  if (!usersCols.some((c) => c.name === "email")) {
+    db.exec("ALTER TABLE users ADD COLUMN email TEXT");
+  }
+  if (!usersCols.some((c) => c.name === "avatar")) {
+    db.exec("ALTER TABLE users ADD COLUMN avatar TEXT");
   }
 }

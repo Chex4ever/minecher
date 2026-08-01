@@ -65,6 +65,23 @@ export function consoleRoutes(app: FastifyInstance, ctx: AppContext): void {
         }
       });
 
+      let isAlive = true;
+      const pingTimer = setInterval(() => {
+        if (!isAlive) {
+          socket.terminate();
+          return;
+        }
+        isAlive = false;
+        if (socket.readyState === socket.OPEN) socket.ping();
+      }, 20000);
+      socket.on("pong", () => {
+        isAlive = true;
+      });
+      const cleanup = () => {
+        clearInterval(pingTimer);
+        unsubscribe();
+      };
+
       socket.on("message", (raw: Buffer) => {
         if (socket.readyState !== socket.OPEN) return;
         try {
@@ -81,8 +98,8 @@ export function consoleRoutes(app: FastifyInstance, ctx: AppContext): void {
         }
       });
 
-      socket.on("close", unsubscribe);
-      socket.on("error", unsubscribe);
+      socket.on("close", cleanup);
+      socket.on("error", cleanup);
     },
   );
 }

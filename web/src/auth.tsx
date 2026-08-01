@@ -1,18 +1,16 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
+import type { User } from "@minecher/types";
 import { api, clearToken, getToken, setToken } from "./api";
 
-export interface Session {
-  id: string;
-  username: string;
-  role: string;
-}
+export type Session = User;
 
 interface AuthContextValue {
   session: Session | null;
   loading: boolean;
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
+  updateUser: (user: Session) => void;
   isAdmin: boolean;
   canOperate: boolean;
 }
@@ -46,16 +44,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSession(null);
   }, []);
 
+  const updateUser = useCallback((user: Session) => {
+    setSession(user);
+  }, []);
+
   const value = useMemo(
     () => ({
       session,
       loading,
       login,
       logout,
+      updateUser,
       isAdmin: session?.role === "admin",
       canOperate: session?.role === "admin" || session?.role === "operator",
     }),
-    [session, loading, login, logout],
+    [session, loading, login, logout, updateUser],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

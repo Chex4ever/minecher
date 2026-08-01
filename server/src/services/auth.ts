@@ -7,6 +7,8 @@ interface UserRow {
   username: string;
   password_hash: string;
   role: User["role"];
+  email: string | null;
+  avatar: string | null;
   created_at: string;
 }
 
@@ -32,10 +34,12 @@ export function createUser(db: Db, username: string, password: string, role: Use
     username,
     password_hash: hashPassword(password, crypto.randomBytes(16).toString("hex")),
     role,
+    email: null,
+    avatar: null,
     created_at: new Date().toISOString(),
   };
-  db.prepare("INSERT INTO users (id, username, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?)")
-    .run(row.id, row.username, row.password_hash, row.role, row.created_at);
+  db.prepare("INSERT INTO users (id, username, password_hash, role, email, avatar, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+    .run(row.id, row.username, row.password_hash, row.role, row.email, row.avatar, row.created_at);
   return toUser(row);
 }
 
@@ -61,7 +65,43 @@ export function checkCredentials(db: Db, username: string, password: string): Us
 }
 
 function toUser(row: UserRow): User {
-  return { id: row.id, username: row.username, role: row.role, createdAt: row.created_at };
+  return {
+    id: row.id,
+    username: row.username,
+    role: row.role,
+    email: row.email,
+    avatar: row.avatar,
+    createdAt: row.created_at,
+  };
+}
+
+export function updateUserProfile(
+  db: Db,
+  id: string,
+  patch: { username?: string; email?: string | null; avatar?: string | null },
+): User | null {
+  const row = db.prepare("SELECT * FROM users WHERE id = ?").get(id) as UserRow | undefined;
+  if (!row) return null;
+  const username = patch.username !== undefined ? patch.username : row.username;
+  if (patch.username !== undefined) {
+    const taken = db.prepare("SELECT id FROM users WHERE username = ? AND id != ?").get(username, id);
+    if (taken) throw new Error("Username is already taken");
+  }
+  const email = patch.email !== undefined ? patch.email : row.email;
+  const avatar = patch.avatar !== undefined ? patch.avatar : row.avatar;
+  db.prepare("UPDATE users SET username = ?, email = ?, avatar = ? WHERE id = ?").run(username, email, avatar, id);
+  return userById(db, id);
+}
+
+export function changePassword(db: Db, id: string, currentPassword: string, newPassword: string): User | null {
+  const row = db.prepare("SELECT * FROM users WHERE id = ?").get(id) as UserRow | undefined;
+  if (!row) return null;
+  if (!verifyPassword(currentPassword, row.password_hash)) throw new Error("Current password is incorrect");
+  db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(
+    hashPassword(newPassword, crypto.randomBytes(16).toString("hex")),
+    id,
+  );
+  return userById(db, id);
 }
 
 export function roleAtLeast(user: User, required: User["role"]): boolean {

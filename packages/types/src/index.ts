@@ -83,6 +83,8 @@ export interface User {
   id: string;
   username: string;
   role: "admin" | "operator" | "viewer";
+  email: string | null;
+  avatar: string | null;
   createdAt: string;
 }
 

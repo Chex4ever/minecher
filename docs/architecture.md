@@ -33,7 +33,7 @@ Minecher — монорепозиторий на npm workspaces с двумя р
 ### Маршруты (`server/src/routes/*`)
 | Модуль | Назначение |
 |---|---|
-| `auth.ts` | login, me, управление пользователями (admin) |
+| `auth.ts` | login, me (свежий из БД), профиль (username/email), смена пароля, загрузка/удаление аватара, раздача аватаров, управление пользователями (admin) |
 | `servers.ts` | CRUD серверов, start/stop/restart/command |
 | `logs.ts` | GET логов из индекса + WS-консоль |
 | `versions.ts` | список типов, версий и лоадеров |
@@ -43,7 +43,7 @@ Minecher — монорепозиторий на npm workspaces с двумя р
 | `ports.ts` | резервирование блока 5 портов на сервер (`port..port+4`: игровой, rcon, query, резерв), подбор свободного блока, проверка `GET /api/ports/:port` |
 | `client.ts` | клиентский лаунчер: версии/лоадеры, сборки (create/list/get/download/delete) |
 
-Аутентификация — preHandler `authenticate` (JWT) + `requireRole`. WS-консоль принимает токен через `?token=` (браузер не умеет заголовки на WebSocket).
+Аутентификация — preHandler `authenticate` (JWT) + `requireRole`. WS-консоль принимает токен через `?token=` (браузер не умеет заголовки на WebSocket). Аватары хранятся в `data/avatars/<userId>.<ext>` и раздаются по `GET /api/auth/avatars/:file` с токеном (Bearer или `?token=`, т.к. `<img>` не умеет заголовки). Смена username выдаёт новый JWT (payload содержит username), фронт подменяет токен.
 
 ### Сервисы (`server/src/services/*`)
 - **eventBus** — типизированный EventEmitter, рассылает `ServerEvent` (status/log/stats/created/updated/deleted) всем WS-клиентам.
@@ -69,10 +69,11 @@ java stdout/stderr ──► processManager.handleOutput ──► logStore.appe
 
 ## Web-интерфейс
 
-- `api.ts` — тонкий клиент с JWT из localStorage; WS-URL строится с `?token=`.
-- `auth.tsx` — контекст сессии/ролей.
-- Страницы: `Login`, `Dashboard` (карточки серверов, создание), `ServerPage` (вкладки Console/Logs/Settings/Backups/Schedules), `Launcher` (сборка клиента: форма версии/лоадера/ника, список сборок с прогрессом, скачивание ZIP, модал с инструкцией для PojavLauncher).
+- `api.ts` — тонкий клиент с JWT из localStorage; WS-URL строится с `?token=`, аватар-URL — с `?token=` для `<img>`.
+- `auth.tsx` — контекст сессии (`Session = User`) и ролей; `updateUser` обновляет сессию после правок профиля.
+- Страницы: `Login`, `Dashboard` (карточки серверов, создание; клик по username/аватару → `/settings`), `Account` (`/settings` — смена username/email, пароля, аватара), `ServerPage` (вкладки Console/Logs/Settings/Backups/Schedules), `Launcher` (сборка клиента: форма версии/лоадера/ника, список сборок с прогрессом, скачивание ZIP, модал с инструкцией для PojavLauncher).
 - Vite dev-проксирует `/api` (включая ws) на `:8080`.
+- Для доступа через интернет/NAT используется `vite preview` (`npm run preview -w web`): та же прокси-конфигурация (`preview.proxy`), но без HMR — статическая сборка `web/dist`, минимум соединений. Конфигурация вынесена в `web/vite.config.ts` (`server.proxy` и `preview.proxy` идентичны).
 
 ## Безопасность
 

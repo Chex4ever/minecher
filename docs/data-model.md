@@ -24,6 +24,7 @@ data/
     jre-<feature>-<os>-<arch>.zip   кэш архива скачивания
   tmp/                       временные каталоги импорта/загрузки (чистятся после операции)
   export/                    сгенерированные .mcs-архивы при экспорте (раздаются и удаляются)
+  avatars/                   аватары пользователей: <userId>.<ext> (png/jpg/gif/webp)
   clients/                   сборки клиентского лаунчера (см. ниже)
 ```
 
@@ -61,6 +62,8 @@ users(
   username      TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,        -- scrypt, формат "<salt>:<hex>"
   role          TEXT NOT NULL DEFAULT 'viewer',  -- viewer|operator|admin
+  email         TEXT,                 -- NULL = не задан
+  avatar        TEXT,                 -- "/api/auth/avatars/<userId>.<ext>" или NULL
   created_at    TEXT NOT NULL
 )
 

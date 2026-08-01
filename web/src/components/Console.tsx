@@ -15,37 +15,67 @@ export default function Console({ serverId }: { serverId: string }) {
   const { canOperate } = useAuth();
   const [lines, setLines] = useState<LogEntry[]>([]);
   const [connected, setConnected] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
   const [input, setInput] = useState("");
   const [error, setError] = useState<string | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
-  const pendingRef = useRef<LogEntry[]>([]);
 
   useEffect(() => {
     setLines([]);
     setError(null);
-    const ws = new WebSocket(consoleUrl(serverId));
+    let closed = false;
+    let ws: WebSocket | null = null;
+    let retry = 0;
+    let timer: number | undefined;
 
-    ws.onopen = () => setConnected(true);
-    ws.onclose = () => setConnected(false);
-    ws.onerror = () => setError("Console connection error");
-    ws.onmessage = (ev) => {
-      try {
-        const msg = JSON.parse(ev.data as string) as ConsoleMessage;
-        if (msg.type === "tail" && msg.entries) {
-          setLines(msg.entries);
-        } else if (msg.type === "log" && msg.entry) {
-          setLines((prev) => [...prev.slice(-2000), msg.entry!]);
-        } else if (msg.type === "error") {
-          setError(msg.message ?? "Console error");
+    const connect = () => {
+      if (closed) return;
+      ws = new WebSocket(consoleUrl(serverId));
+
+      ws.onopen = () => {
+        retry = 0;
+        setConnected(true);
+        setReconnecting(false);
+        setError(null);
+      };
+      ws.onmessage = (ev) => {
+        try {
+          const msg = JSON.parse(ev.data as string) as ConsoleMessage;
+          if (msg.type === "tail" && msg.entries) {
+            setLines(msg.entries);
+          } else if (msg.type === "log" && msg.entry) {
+            setLines((prev) => [...prev.slice(-2000), msg.entry!]);
+          } else if (msg.type === "error") {
+            setError(msg.message ?? "Console error");
+          }
+        } catch {
+          /* ignore malformed frames */
         }
-      } catch {
-        /* ignore malformed frames */
-      }
+      };
+      ws.onclose = () => {
+        setConnected(false);
+        if (!closed) {
+          setReconnecting(true);
+          const delay = Math.min(5000, 500 * 2 ** retry);
+          retry++;
+          timer = window.setTimeout(connect, delay);
+        }
+      };
+      ws.onerror = () => {
+        /* onclose follows and schedules the reconnect */
+      };
+
+      wsRef.current = ws;
     };
 
-    wsRef.current = ws;
-    return () => ws.close();
+    connect();
+
+    return () => {
+      closed = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+      ws?.close();
+    };
   }, [serverId]);
 
   useEffect(() => {
@@ -66,7 +96,7 @@ export default function Console({ serverId }: { serverId: string }) {
     <div className="console">
       <div className="console-head">
         <span className={`dot ${connected ? "on" : ""}`} />
-        {connected ? "Connected" : "Disconnected"}
+        {connected ? "Connected" : reconnecting ? "Connection lost — reconnecting…" : "Connecting…"}
         {error && <span className="error"> · {error}</span>}
       </div>
       <div className="console-box" ref={boxRef}>

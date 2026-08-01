@@ -17,6 +17,7 @@ npm workspaces monorepo. Root `package.json` defines `dev`, `build`, `typecheck`
 
 - `npm install` — install all workspaces.
 - `npm run dev` — concurrently: types watch, server (tsx watch), web (vite). Backend on :8080, web on :5173.
+- `npm run start` — one command for a persistent install: builds web first, then concurrently runs server (tsx watch, `:8080`) + `vite preview` (`:5173`, `/api` proxy). Remote access via forwarded `:5173`; the backend `:8080` stays LAN-only.
 - `npm run typecheck` — **always run after changes.** Builds types first, then `tsc --noEmit` in every workspace.
 - `npm run build` — full production build.
 - `npm run dev:server` / `npm run dev:web` — individual dev servers.
@@ -49,9 +50,9 @@ npm workspaces monorepo. Root `package.json` defines `dev`, `build`, `typecheck`
 
 ## API surface (summary)
 
-- `POST /api/auth/login`, `GET /api/auth/me`, `POST|GET /api/auth/users` (admin).
+- `POST /api/auth/login`, `GET /api/auth/me`, `PATCH /api/auth/me` (username/email; returns new `token` when username changes), `POST /api/auth/me/password`, `POST|DELETE /api/auth/me/avatar` (multipart; png/jpg/jpeg/gif/webp ≤2 MB → `data/avatars/`), `GET /api/auth/avatars/:file` (auth via Bearer or `?token=` for `<img>`), `POST|GET /api/auth/users` (admin).
 - `GET|POST /api/servers`, `GET|PATCH|DELETE /api/servers/:id`, `POST /api/servers/:id/{start,stop,restart,command}`.
-- `GET /api/servers/:id/logs`, `GET /api/servers/:id/console` (WebSocket).
+- `GET /api/servers/:id/logs`, `GET /api/servers/:id/console` (WebSocket). The console WS sends a server-side ping every 20s and terminates connections that miss a pong (dead NAT connections are dropped fast); the web console auto-reconnects with exponential backoff (cap 5s).
 - `GET /api/versions`, `GET /api/versions/:type`, `GET /api/versions/:type/:version/loaders`.
 - `GET /api/launcher/versions?type=`, `GET /api/launcher/versions/:type/:mc/loaders`, `POST|GET /api/launcher/builds`, `GET /api/launcher/builds/:id[/download]`, `DELETE /api/launcher/builds/:id` (download requires `status=done`).
 - `GET|POST /api/servers/:id/backups`, `POST .../backups/:bid/restore`, `DELETE .../backups/:bid`.
@@ -74,6 +75,7 @@ data/
   runtime/                   bundled JRE: jre/ + jre-<feature>-<os>-<arch>.zip cache
   tmp/                       import/upload staging (cleaned after each op)
   export/                    generated .mcs archives (streamed then removed)
+  avatars/                   user avatars: <userId>.<ext> (png/jpg/gif/webp)
   clients/                   client launcher builds: <type>-<mc>[-<loader>]-<player>-<id8>.zip (LRU ~10), cache/{jars/vanilla,libraries,assets/{indexes,objects}}, build/<id>/ scratch (wiped per build; stale rows marked error on boot)
 ```
 

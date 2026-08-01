@@ -17,7 +17,7 @@
     "@minecher/types": "*",
     "adm-zip": "^0.5.18",
     "archiver": "^8.0.0",
-    "better-sqlite3": "^11.3.0",
+    "better-sqlite3": "^12.11.1",
     "cron-parser": "^4.9.0",
     "fastify": "^4.28.1",
     "nanoid": "^5.0.7"
