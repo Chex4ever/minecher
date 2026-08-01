@@ -138,6 +138,42 @@ Graceful stop через stdin `stop`, затем kill/SIGKILL.
 → `200` `{ "type": "forge", "version": "1.20.1", "loaders": ["1.20.1-47.2.0", ...] }`
 Для vanilla/paper/spigot вернёт `loaders: []`.
 
+## Клиентский лаунчер
+
+Сборка играбельного клиента в ZIP (аналогично TLauncher): jar клиента + все библиотеки + полные ассеты (включая звуки) + `launcher.json` + `start.bat`/`start.sh` для ПК. Для Android папка совместима с PojavLauncher (раскладывается как `.minecraft`). Все маршруты — за авторизацией.
+
+### GET `/launcher/versions?type=vanilla|forge|fabric`
+Список версий клиента (без бета/снапшотов).
+→ `200` `{ "type": "vanilla", "versions": ["1.20.1", ...] }` | `400 bad_type` | `502` при недоступности источника.
+
+### GET `/launcher/versions/:type/:mc/loaders`
+Лоадеры для версии (Forge: `1.20.1-47.4.22`; Fabric: `0.19.3`). Для vanilla — `[]`.
+→ `200` `{ "type": "forge", "mcVersion": "1.20.1", "loaders": [...] }`.
+
+### POST `/launcher/builds` *(любая авторизованная роль)*
+Создаёт сборку и ставит её в очередь (сборки выполняются последовательно).
+```json
+{ "launcherType": "vanilla|forge|fabric", "mcVersion": "1.20.1", "loaderVersion": "1.20.1-47.4.22", "username": "Steve" }
+```
+`loaderVersion` обязателен для forge/fabric (можно получить через `/loaders`), для vanilla игнорируется. `username` — офлайн-ник (UUID вычисляется как `MD5("OfflinePlayer:<name>")`).
+→ `201` `{ "build": ClientBuildInfo }`
+
+`ClientBuildInfo = { id, launcherType, mcVersion, loaderVersion, username, status, progress, message, sizeBytes, zipPath, error, createdAt, updatedAt }`, `status: queued | building | done | error`.
+
+### GET `/launcher/builds`
+→ `200` `{ "builds": [ ClientBuildInfo ] }` (новые сверху).
+
+### GET `/launcher/builds/:id`
+→ `200` `{ "build": ClientBuildInfo }` | `404`.
+
+### GET `/launcher/builds/:id/download`
+Готовый ZIP (только `status === "done"`). `Content-Disposition: attachment`, `Content-Type: application/zip`, `Content-Length`.
+→ `200` stream | `404` | `409 not_ready`.
+
+### DELETE `/launcher/builds/:id` *(operator)*
+Удаляет запись и файл ZIP.
+→ `204` | `404`.
+
 ## Бэкапы
 
 ### GET `/servers/:id/backups`

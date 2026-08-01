@@ -41,6 +41,7 @@ Minecher — монорепозиторий на npm workspaces с двумя р
 | `schedules.ts` | CRUD расписаний + ручной RCON-эндпоинт |
 | `imports.ts` | импорт из папки/`.mcs`, экспорт в `.mcs` |
 | `ports.ts` | резервирование блока 5 портов на сервер (`port..port+4`: игровой, rcon, query, резерв), подбор свободного блока, проверка `GET /api/ports/:port` |
+| `client.ts` | клиентский лаунчер: версии/лоадеры, сборки (create/list/get/download/delete) |
 
 Аутентификация — preHandler `authenticate` (JWT) + `requireRole`. WS-консоль принимает токен через `?token=` (браузер не умеет заголовки на WebSocket).
 
@@ -54,6 +55,7 @@ Minecher — монорепозиторий на npm workspaces с двумя р
 - **imports** — копирование папки-сервера и распаковка/создание `.mcs`-архивов (`adm-zip`), автодетект типа, подбор порта.
 - **scheduler** — cron через `cron-parser`, тик каждые 30 секунд, дедупликация срабатываний по id+время.
 - **rcon** — RCON-клиент (TCP, 4-байтные фреймы), фолбэк для команд, когда stdin недоступен.
+- **clientService** — сборка клиентского лаунчера: версии/лоадеры (vanilla manifest, meta.fabricmc.net, Forge maven), очередь сборок, скачивание клиентского jar/библиотек/полных ассетов, Forge-установка `--installClient`, генерация `launcher.json`, Java-argfiles и `start.bat`/`start.sh`, упаковка в ZIP. Подробности и решения — ADR-020, layout — `docs/data-model.md`.
 - **serverRepository** — доступ к таблице `servers`, маппинг строк в типизированные объекты.
 
 ## Поток лога
@@ -69,7 +71,7 @@ java stdout/stderr ──► processManager.handleOutput ──► logStore.appe
 
 - `api.ts` — тонкий клиент с JWT из localStorage; WS-URL строится с `?token=`.
 - `auth.tsx` — контекст сессии/ролей.
-- Страницы: `Login`, `Dashboard` (карточки серверов, создание), `ServerPage` (вкладки Console/Logs/Settings/Backups/Schedules).
+- Страницы: `Login`, `Dashboard` (карточки серверов, создание), `ServerPage` (вкладки Console/Logs/Settings/Backups/Schedules), `Launcher` (сборка клиента: форма версии/лоадера/ника, список сборок с прогрессом, скачивание ZIP, модал с инструкцией для PojavLauncher).
 - Vite dev-проксирует `/api` (включая ws) на `:8080`.
 
 ## Безопасность

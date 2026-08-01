@@ -108,6 +108,10 @@ button:disabled {
   color: var(--text);
 }
 
+.button.ghost {
+  background: transparent;
+}
+
 .muted {
   color: var(--muted);
 }
@@ -616,4 +620,129 @@ label input[type="checkbox"] {
 
 .schedule-form label {
   min-width: 140px;
+}
+
+/* Launcher */
+.launcher-grid {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.launcher-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.launcher-form button {
+  align-self: flex-start;
+}
+
+.launcher-addresses {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.launcher-addresses li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.launcher-addresses li div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.builds-card {
+  margin-top: 16px;
+}
+
+.build-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.build-list > li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  flex-wrap: wrap;
+}
+
+.build-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 220px;
+  flex: 1;
+}
+
+.build-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.build-title .status {
+  font-size: 11px;
+}
+
+.build-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.progress {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.progress-bar {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width 0.3s;
+}
+
+.launcher-help {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.launcher-help code {
+  font-family: var(--mono);
+  font-size: 12px;
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
 }

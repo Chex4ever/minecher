@@ -9,6 +9,7 @@ import type { BackupService } from "./backups.js";
 import type { ImportService } from "./imports.js";
 import type { RconClient } from "./rcon.js";
 import type { SchedulerService } from "./scheduler.js";
+import type { ClientService } from "./clientService.js";
 
 export interface AppContext {
   config: AppConfig;
@@ -22,4 +23,5 @@ export interface AppContext {
   imports: ImportService;
   rcon: RconClient;
   scheduler: SchedulerService;
+  clients: ClientService;
 }

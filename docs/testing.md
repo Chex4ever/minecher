@@ -90,6 +90,14 @@ Invoke-WebRequest "$base/imports/mcs" -Method Post -Headers $h -Form @{ file = G
 | `PATCH` velocity-прокси с `velocityProxyId` (прокси не может быть бэкендом) | 400 `invalid_proxy` |
 | DELETE velocity-прокси | у бэкендов `velocityProxyId` сбрасывается в `null` |
 | Экспорт `.mcs` бэкенда | `forwarding.secret` НЕ в архиве; манифест содержит `velocityProxyId` |
+| `POST /api/launcher/builds` vanilla 1.20.1 → download | сборка `done`, ZIP ~750 МБ; содержимое: `1.20.1.jar`, `libraries/**`, `assets/indexes/5.json` + `assets/objects/**` (полный индекс со звуками), `natives/{linux,macos,macos-arm64,windows,windows-arm64}/` **плоско** (`.dll`/`.so`/`.dylib` в корне), `launcher.json` (offline-account, серверы из БД с LAN-IP), `start.bat`/`start.sh`/`README.txt` |
+| Запуск собранного vanilla-клиента (start.bat, Java 21) | клиент **дошёл до главного меню**: Datafixer bootstrap, LWJGL 3.3.1, OpenAL (звук), атласы текстур; офлайн-вход (`Failed to verify authentication` — ожидаемо при `accessToken=0`), «Setting user», окно открыто, процесс жив (~1,1 ГБ) |
+| `POST /api/launcher/builds` fabric 1.20.1 (0.19.3) | `done`, ZIP ~756 МБ, mainClass `net.fabricmc.loader.impl.launch.knot.KnotClient`, `versions/1.20.1/1.20.1.jar` + профиль fabric-loader |
+| Forge 1.20.1 (47.4.22) без подготовки | installer падает: `There is no Minecraft installation at: <dir>` (нет `versions/<mc>/{jar,json}` и `launcher_profiles.json`) |
+| `POST /api/launcher/builds` forge 1.20.1 (47.4.22) | `done`, ZIP ~832 МБ; `versions/1.20.1/1.20.1.jar` + `versions/1.20.1-forge-47.4.22/…json` (наследует vanilla), `libraries/**` = forge-installer + vanilla; **в ZIP нет** служебного каталога `forge-install/`; `start.bat`: `-p <module path> --add-modules ALL-MODULE-PATH … -cp "<clientjar>;libraries/**"`, mainClass `cpw.mods.bootstraplauncher.BootstrapLauncher` |
+| Запуск forge-клиента (Java 21/25) | BSL стартует и доходит до module resolution — падает `ResolutionException: Modules … export package … to module …` (известная несовместимость Forge 1.20.1 с Java >17; README сборки требует Java 17) |
+| Ограничение командной строки Windows | прямой `-cp` из 100+ jar в bat превышает 8191 символ cmd.exe (`The input line is too long`) → решено Java-argfiles `launch-windows.args`/`launch-unix.args` (по аргументу на строку, `-cp` и значение раздельно); argfile **без BOM** (BOM превращает первый `-D…` в имя main class) |
+| Повторная сборка (кэши) | клиентский jar/библиотеки/ассеты из `data/clients/cache/**` не перекачиваются: сборка за ~5–40с (Forge с installer ~35с) |
 
 ## Запуск реального сервера (ручной сценарий)
 
@@ -106,6 +114,14 @@ Invoke-WebRequest "$base/imports/mcs" -Method Post -Headers $h -Form @{ file = G
 4. Проверка входа: подключитесь к прокси (порт прокси), а не к бэкенду; Motd в списке серверов — зелёное имя прокси.
 5. Ограничение: **modern forwarding требует клиенты/бэкенды 1.13+**; старые версии (например Beta 1.7.3) через прокси не зайдут — для них прокси не назначается.
 
+## Клиентский лаунчер (ручной сценарий)
+
+1. Вкладка **Launcher**: выберите тип (vanilla/forge/fabric), версию, лоадер (для forge/fabric), офлайн-ник; «Собрать».
+2. В списке сборок — прогресс; после `done` — «Скачать» (ZIP ~750 МБ для 1.20.1, в том числе полные ассеты со звуками).
+3. ПК (Windows): распакуйте, запустите `start.bat` (нужна Java 17+; для Forge 1.20.1 — **Java 17**). Linux/macOS: `chmod +x start.sh && ./start.sh`.
+4. Android: скопируйте папку в `Android/data/net.kdt.pojavlaunch/files/.minecraft/`, откройте PojavLauncher, запустите версию (использует собственный Java/natives; start-скрипты не нужны), аккаунт — offline с тем же ником.
+5. Multiplayer: адреса серверов — из `launcher.json`/`README.txt` (LAN-IP хоста). Серверы должны быть `online-mode=false`.
+
 ## Известные ограничения среды тестирования
 
 - **Orphan-процессы.** `Start-Job`/`Stop-Job` в PowerShell не убивают дочерние `node`/`tsx`. Они держат порты и дают flaky «connection reset». Перед повторными тестами:
@@ -119,3 +135,4 @@ Invoke-WebRequest "$base/imports/mcs" -Method Post -Headers $h -Form @{ file = G
 - **Java без правок системы.** Встроенный JRE скачивается в `data/runtime` при первом старте; системный `java`/`JAVA_HOME` больше не нужны. Если на PATH стоит сломанный stub (например, Oracle `javapath`, падающий с кодом `0xC0000409` даже на `java -version`) — это не влияет на запуск серверов. Проверка загрузки: сервер печатает `System Info: Java ...` без указания версии из PATH.
 - **EULA и online-mode.** EULA принимается автоматически (при каждом старте пишется `eula.txt` → `eula=true`). `online-mode=false` — управляемый дефолт: если в настройках задано своё значение — оно сохраняется.
 - **Начальная загрузка.** Давайте серверу 10–15с после старта перед первыми запросами (первый тик SQLite-индекса, связывание портов).
+- **Клиентский лаунчер.** Forge-клиент 1.20.1 запускается только на **Java 17** (Java 21/25 дают `ResolutionException` при module resolution); vanilla/fabric 1.20.1 — на Java 17–21+. В тестируемой среде Java 17 не установлена — Forge проверен до этапа module resolution, полный вход в игру не воспроизводился. Сборки большие (~750–830 МБ) — для повторных тестов используйте кэши (`data/clients/cache/**`). Прямая выдача ZIP ~1 ГБ из `/download` может быть медленной на слабых каналах.

@@ -45,6 +45,7 @@ npm workspaces monorepo. Root `package.json` defines `dev`, `build`, `typecheck`
 - `server/src/services/scheduler.ts` — cron via `cron-parser`, tick every 30s, actions start/stop/restart/backup/command.
 - `server/src/services/backups.ts` — zip server dir (excl. logs/jar) with `archiver`, restore via staging dir with `adm-zip` (NOT `extract-zip` — it hangs on large entries under modern Node).
 - `server/src/services/imports.ts` — `ImportService`: `importPath` (copy folder → staging → `servers.create()` → atomic rename), `importMcS` (`.mcs` zip → `adm-zip` extract), `exportMcS` (zip with `mcs.json` manifest). Auto-detects type from jar/dir layout; type `custom` skips jar download.
+- `server/src/services/clientService.ts` — client launcher: assembles a full Minecraft **client** (vanilla/Forge/Fabric: client jar + all libraries + full assets incl. sounds + natives) into a downloadable zip with `launcher.json`, `start.bat`/`start.sh` (PC) and PojavLauncher compatibility (Android). Serial build queue, shared caches under `data/clients/cache/`, offline auth (UUID = MD5(`OfflinePlayer:<name>`)), ZIP in `data/clients/`. Scripts use Java **argfiles** (`launch-windows.args`/`launch-unix.args`, one arg per line, `-cp` + value on separate lines, BOM-less) — a 100+ jar `-cp` overflows cmd.exe's 8191-char limit. Natives are extracted **flat** from classifier jars. Forge 1.20.1: installer needs `versions/<mc>/{jar,json}` + stub `launcher_profiles.json`, profile inherits vanilla jar, launched via `BootstrapLauncher` with module path AND full classpath; requires Java 17 (fails module resolution on 21/25). See ADR-020.
 
 ## API surface (summary)
 
@@ -52,6 +53,7 @@ npm workspaces monorepo. Root `package.json` defines `dev`, `build`, `typecheck`
 - `GET|POST /api/servers`, `GET|PATCH|DELETE /api/servers/:id`, `POST /api/servers/:id/{start,stop,restart,command}`.
 - `GET /api/servers/:id/logs`, `GET /api/servers/:id/console` (WebSocket).
 - `GET /api/versions`, `GET /api/versions/:type`, `GET /api/versions/:type/:version/loaders`.
+- `GET /api/launcher/versions?type=`, `GET /api/launcher/versions/:type/:mc/loaders`, `POST|GET /api/launcher/builds`, `GET /api/launcher/builds/:id[/download]`, `DELETE /api/launcher/builds/:id` (download requires `status=done`).
 - `GET|POST /api/servers/:id/backups`, `POST .../backups/:bid/restore`, `DELETE .../backups/:bid`.
 - `GET|POST /api/servers/:id/schedules`, `PATCH|DELETE .../schedules/:sid`.
 - `POST /api/servers/:id/rcon`.
@@ -72,6 +74,7 @@ data/
   runtime/                   bundled JRE: jre/ + jre-<feature>-<os>-<arch>.zip cache
   tmp/                       import/upload staging (cleaned after each op)
   export/                    generated .mcs archives (streamed then removed)
+  clients/                   client launcher builds: <type>-<mc>[-<loader>]-<player>-<id8>.zip (LRU ~10), cache/{jars/vanilla,libraries,assets/{indexes,objects}}, build/<id>/ scratch (wiped per build; stale rows marked error on boot)
 ```
 
 Dev note: running `npm run dev -w server` sets cwd to `server/`, so dev data lands in `server/data`. `tsx watch` ignores `data/**` to avoid restart loops.

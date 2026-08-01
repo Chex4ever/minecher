@@ -111,6 +111,42 @@ export const api = {
     const m = cd.match(/filename="?([^";]+)"?/);
     return { blob: await res.blob(), filename: m ? m[1] : "server.mcs" };
   },
+  launcherVersions: (type: string) =>
+    request<{ type: string; versions: string[] }>(`/launcher/versions?type=${encodeURIComponent(type)}`),
+  launcherLoaders: (type: string, mcVersion: string) =>
+    request<{ type: string; mcVersion: string; loaders: string[] }>(
+      `/launcher/versions/${type}/${encodeURIComponent(mcVersion)}/loaders`,
+    ),
+  createLauncherBuild: (body: {
+    launcherType: string;
+    mcVersion: string;
+    loaderVersion?: string;
+    username: string;
+  }) =>
+    request<{ build: import("@minecher/types").ClientBuildInfo }>("/launcher/builds", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  listLauncherBuilds: () =>
+    request<{ builds: import("@minecher/types").ClientBuildInfo[] }>("/launcher/builds"),
+  deleteLauncherBuild: (id: string) => request<void>(`/launcher/builds/${id}`, { method: "DELETE" }),
+  downloadLauncherBuild: async (id: string): Promise<{ blob: Blob; filename: string }> => {
+    const token = getToken();
+    const res = await fetch(`/api/launcher/builds/${id}/download`, {
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    });
+    if (res.status === 401) {
+      clearToken();
+      throw new ApiError(401, "Unauthorized");
+    }
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new ApiError(res.status, (body as { message?: string }).message ?? res.statusText);
+    }
+    const cd = res.headers.get("Content-Disposition") ?? "";
+    const m = cd.match(/filename="?([^";]+)"?/);
+    return { blob: await res.blob(), filename: m ? m[1] : "client.zip" };
+  },
 };
 
 export function consoleUrl(serverId: string): string {

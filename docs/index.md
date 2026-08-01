@@ -3,7 +3,7 @@
 | Раздел | Содержание |
 |---|---|
 | [architecture.md](architecture.md) | Обзор системы, слои, потоки данных |
-| [decisions.md](decisions.md) | Технические решения (ADR-001…016) |
+| [decisions.md](decisions.md) | Технические решения (ADR-001…020) |
 | [api.md](api.md) | Полная справка REST + WebSocket API |
 | [data-model.md](data-model.md) | Каталоги данных, схема SQLite, форматы |
 | [process-management.md](process-management.md) | Жизненный цикл процессов, рестарты, статистика |

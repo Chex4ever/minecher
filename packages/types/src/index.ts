@@ -103,3 +103,29 @@ export interface ScheduleInfo {
   enabled: boolean;
   createdAt: string;
 }
+
+export type ClientLauncherType = "vanilla" | "forge" | "fabric";
+
+export type ClientBuildStatus = "queued" | "building" | "done" | "error";
+
+export interface ClientBuildInfo {
+  id: string;
+  launcherType: ClientLauncherType;
+  mcVersion: string;
+  loaderVersion: string | null;
+  username: string;
+  status: ClientBuildStatus;
+  progress: number;
+  message: string;
+  sizeBytes: number | null;
+  zipPath: string | null;
+  error: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LauncherVersionsResponse {
+  type: ClientLauncherType;
+  versions: string[];
+  loaders?: string[];
+}

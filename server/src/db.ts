@@ -69,6 +69,22 @@ CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS client_builds (
+  id TEXT PRIMARY KEY,
+  launcher_type TEXT NOT NULL,
+  mc_version TEXT NOT NULL,
+  loader_version TEXT,
+  username TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'queued',
+  progress REAL NOT NULL DEFAULT 0,
+  message TEXT NOT NULL DEFAULT '',
+  size_bytes INTEGER,
+  zip_path TEXT,
+  error TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
 `;
 
 export function openDb(config: AppConfig): Db {

@@ -24,6 +24,7 @@ data/
     jre-<feature>-<os>-<arch>.zip   кэш архива скачивания
   tmp/                       временные каталоги импорта/загрузки (чистятся после операции)
   export/                    сгенерированные .mcs-архивы при экспорте (раздаются и удаляются)
+  clients/                   сборки клиентского лаунчера (см. ниже)
 ```
 
 ## Формат архива .mcs
@@ -120,6 +121,22 @@ settings(
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
 )
+
+client_builds(
+  id            TEXT PRIMARY KEY,
+  launcher_type TEXT NOT NULL,          -- vanilla|forge|fabric
+  mc_version    TEXT NOT NULL,
+  loader_version TEXT,
+  username      TEXT NOT NULL,
+  status        TEXT NOT NULL DEFAULT 'queued',  -- queued|building|done|error
+  progress      REAL NOT NULL DEFAULT 0,
+  message       TEXT,
+  error         TEXT,
+  size_bytes    INTEGER,
+  zip_path      TEXT,
+  created_at    TEXT NOT NULL,
+  updated_at    TEXT NOT NULL
+)
 ```
 
 ## Типы (packages/types)
@@ -128,6 +145,32 @@ settings(
 - `LogEntry` — `{ id, serverId, timestamp, stream, level, message }`.
 - `ServerEvent` — дискриминированный союз `status | log | stats | created | updated | deleted` (у created/updated поле `server`, т.к. в `MinecraftServer` уже есть `type`).
 - `ServerStatus`, `ServerType`, `ServerStats`, `BackupInfo`, `ScheduleInfo`, `User`, `VersionManifest`, `ApiError`.
+- `ClientLauncherType` (`vanilla|forge|fabric`), `ClientBuildStatus` (`queued|building|done|error`), `ClientBuildInfo`, `LauncherVersionsResponse`.
+
+## Клиентские сборки (data/clients)
+
+```
+clients/
+  <launcherType>-<mcVersion>[-<loader>]-<username>-<id8>.zip   готовые сборки (до ~10, LRU)
+  cache/
+    jars/vanilla/<mc>.jar                  клиентские jar (кэш, общий для vanilla/forge/fabric)
+    libraries/**                           общий кэш библиотек (maven-пути)
+  assets/objects/<ab>/<sha1>               общий кэш ассетов (objects + indexes)
+  build/<id>/                              рабочий каталог одной сборки (чистится после, см. ниже)
+```
+
+Содержимое ZIP (корень сборки):
+- `libraries/**` — все библиотеки (maven-пути): vanilla + лоадер. Для Forge — из installer + vanilla.
+- `versions/<mc>/<mc>.jar` — клиентский jar vanilla (Forge наследует его); `versions/<full>/<full>.json` — профиль версии (Forge: `1.20.1-forge-47.4.22`, наследует vanilla, отдельного jar нет).
+- `natives/<os>/` — нативные библиотеки, распакованные из classifier-джар плоско (файлы `.dll`/`.so`/`.dylib` прямо в каталоге): `windows`/`windows-arm64`/`linux`/`linux-arm64`/`macos`/`macos-arm64`.
+- `assets/indexes/<id>.json` + `assets/objects/**` — **полный** индекс ассетов со звуками (флагов включения нет).
+- `launcher.json` — манифест: `{ launcher, client: {type,mcVersion,loader,versionId,assetIndex,mainClass}, account: {username,uuid,offline:true}, servers: [{name,host,port,onlineMode}] }` (серверы из БД, host — LAN-IP хоста).
+- `launch-windows.args` / `launch-unix.args` — JVM-аргументы и `-cp` в Java-argfile (по одному аргументу на строку; разделители classpath `;`/`:`) — иначе командная строка превышает лимит cmd.exe (8191 символ).
+- `start.bat` / `start.sh` — `java -Djava.library.path=<natives по платформе> @launch-<os>.args <mainClass> <game args>`; для Forge (Java 25) см. ограничение в testing.md.
+- `README.txt` — инструкция: ПК (start.bat/sh, нужна Java 17+) и Android (PojavLauncher, скопировать как `.minecraft`).
+
+Процесс сборки (`server/src/services/clientService.ts`): очередь serial (`pump()`), статусы в `client_builds`. Vanilla/Fabric — `net.minecraft.client.main.Main`/`KnotClient`, обычный `-cp` + `-Djava.library.path`. Forge 1.20.1 — клиентская установка через installer: в scratch-каталог кладутся `versions/<mc>/{jar,json}` + заглушка `launcher_profiles.json` (иначе installer падает «There is no Minecraft installation»), затем `java -jar forge-...-installer.jar --installClient <dir>`; сгенерированный профиль `versions/<mc>-forge-<build>/<full>.json` наследует vanilla (jar — `versions/<mc>/<mc>.jar`), библиотеки — из `libraries/` installer + vanilla; запуск через `cpw.mods.bootstraplauncher.BootstrapLauncher` с module-path (`-p ...jar;...`, `--add-modules ALL-MODULE-PATH`), classpath обязателен целиком (BSL читает `java.class.path`).
+
 
 ## Уровень логов
 

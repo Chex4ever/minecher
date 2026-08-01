@@ -61,6 +61,9 @@ export default function Dashboard() {
         <span className="muted">
           {session?.username} ({session?.role})
         </span>
+        <Link className="button ghost" to="/launcher">
+          Launcher
+        </Link>
         {canOperate && (
           <>
             <button className="ghost" onClick={() => setShowImport(true)}>

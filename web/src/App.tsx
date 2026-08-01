@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from "./auth";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import ServerPage from "./pages/ServerPage";
+import Launcher from "./pages/Launcher";
 
 function Guard({ children }: { children: React.ReactNode }) {
   const { session, loading } = useAuth();
@@ -29,6 +30,14 @@ export default function App() {
           element={
             <Guard>
               <ServerPage />
+            </Guard>
+          }
+        />
+        <Route
+          path="/launcher"
+          element={
+            <Guard>
+              <Launcher />
             </Guard>
           }
         />

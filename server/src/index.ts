@@ -15,6 +15,7 @@ import { BackupService } from "./services/backups.js";
 import { ImportService } from "./services/imports.js";
 import { RconClient } from "./services/rcon.js";
 import { SchedulerService } from "./services/scheduler.js";
+import { ClientService } from "./services/clientService.js";
 import type { AppContext } from "./services/context.js";
 import { createUser } from "./services/auth.js";
 import { authRoutes } from "./routes/auth.js";
@@ -25,6 +26,7 @@ import { backupRoutes } from "./routes/backups.js";
 import { importRoutes } from "./routes/imports.js";
 import { scheduleRoutes, rconRoutes } from "./routes/schedules.js";
 import { portRoutes } from "./routes/ports.js";
+import { clientRoutes } from "./routes/client.js";
 
 async function main(): Promise<void> {
   dns.setDefaultResultOrder("ipv4first");
@@ -39,6 +41,7 @@ async function main(): Promise<void> {
   const backups = new BackupService(config, db, servers, processes, logs);
   const imports = new ImportService(config, db, servers, processes, logs);
   const scheduler = new SchedulerService(db, logs);
+  const clients = new ClientService(config, db);
 
   const ctx: AppContext = {
     config,
@@ -52,6 +55,7 @@ async function main(): Promise<void> {
     imports,
     rcon,
     scheduler,
+    clients,
   };
   scheduler.ctx = ctx;
 
@@ -98,6 +102,7 @@ async function main(): Promise<void> {
   scheduleRoutes(app, ctx);
   rconRoutes(app, ctx);
   portRoutes(app, ctx);
+  clientRoutes(app, ctx);
 
   bootstrapAdmin(config, db);
 

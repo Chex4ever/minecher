@@ -59,6 +59,9 @@ export default function ServerPage() {
           {server ? `${server.type} ${server.version}` : ""}
         </span>
         <div className="spacer" />
+        <Link className="button ghost" to="/launcher">
+          Launcher
+        </Link>
         {canOperate && server && (
           <>
             {server.status === "running" ? (

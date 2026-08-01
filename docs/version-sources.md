@@ -48,6 +48,15 @@ interface VersionSource {
 - «Свой сервер»: пустой источник (`listVersions: []`, `listLoaderVersions: []`).
 - `resolveJar` бросает `VersionSourceError` — jar не скачивается, старт требует существующий `server.jar`/`fabric-server.jar` в рабочей директории (используется для импортированных серверов).
 
+## Клиентский лаунчер (clientService)
+Отдельный механизм в `server/src/services/clientService.ts` (не `VersionSource`), для сборки клиента:
+- **Vanilla:** список релизов из `version_manifest_v2.json` (`type === "release"`); клиентский jar — `downloads.client` из `versionJson`.
+- **Fabric:** версии — `https://meta.fabricmc.net/v2/versions` → `game[]` со `stable`; лоадеры — `loader[].version`; профиль клиента — `GET .../loader/<mc>/<loader>/profile/json` (mainClass `KnotClient`, библиотеки fabric + vanilla).
+- **Forge:** список и лоадеры из Maven `net/minecraftforge/forge/maven-metadata.xml` (как серверный Forge); jar — installer `.../forge-<full>-installer.jar`, запускается `--installClient <dir>` на scratch-каталог с подготовленными `versions/<mc>/{jar,json}` и заглушкой `launcher_profiles.json`. Профиль `versions/<mc>-forge-<build>/<full>.json` наследует vanilla.
+- **Ассеты:** полный индекс (`assetIndex.url`), объекты с `https://resources.download.minecraft.net/<ab>/<sha1>` — **включая звуки**, без флагов выборочного скачивания.
+- **Нативные:** classifier-джары `natives-windows[-arm64]`/`natives-linux[-arm64]`/`natives-macos[-arm64]`/legacy `natives-osx` распаковываются плоско в `natives/<os>/`.
+- Кэши: клиентские jar — `data/clients/cache/jars/vanilla/<mc>.jar`; библиотеки — `data/clients/cache/libraries/**`; ассеты — `data/clients/assets/{indexes,objects}`.
+
 ## Общее
 - Таймаут запросов 30с (AbortController).
 - Кэширование в памяти не реализовано; при повторных запросах списков происходит новый HTTP-вызов.
