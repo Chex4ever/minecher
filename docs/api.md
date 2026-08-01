@@ -261,6 +261,42 @@ Graceful stop через stdin `stop`, затем kill/SIGKILL.
 Экспорт сервера в `.mcs`-архив (zip: `mcs.json` — манифест, остальное — файлы сервера, кроме `logs/**`, `*.log`, `session.lock`, `forwarding.secret`). Сервер должен быть остановлен. Манифест содержит `velocityProxyId` (восстанавливается при импорте только если такой прокси существует).
 → `200` `application/zip` (Content-Disposition `attachment`) | `400` `{ "error": "export_failed", ... }`.
 
+### POST `/imports/remote/list` *(operator)*
+Подключение к другому экземпляру Minecher и список его серверов (для выбора при переносе). Авторизация на удалённой стороне — через `POST /auth/login` (учётка должна иметь право на экспорт, т.е. оператор/админ).
+```json
+{ "url": "https://example.com:5173", "username": "admin", "password": "secret" }
+```
+`url` — адрес удалённого web-интерфейса/API (протокол `http://`/`https://`, опционально порт; без креденшелов в URL).
+→ `200` `{ "servers": [ RemoteServerInfo ] }` — `RemoteServerInfo = { id, name, type, version, status, memoryMaxMb }` | `400` `{ "error": "remote_failed", ... }` (недоступен, неверные креденшелы).
+
+### POST `/imports/remote` *(operator)*
+Перенос сервера напрямую с другого Minecher: бэкенд логинится на удалённом экземпляре, скачивает `.mcs`-экспорт выбранного сервера и импортирует его локально (как `/imports/mcs`). Сервер на удалённой стороне должен быть остановлен.
+```json
+{
+  "url": "https://example.com:5173",
+  "username": "admin",
+  "password": "secret",
+  "serverId": "...",
+  "name": "My Server",      // опционально
+  "port": 25565             // опционально
+}
+```
+→ `201` `{ "server": MinecraftServer }` | `400` `{ "error": "import_failed", ... }`.
+
+### POST `/imports/remote/push` *(operator)*
+Обратное направление: отправить локальный сервер на другой Minecher. Бэкенд экспортирует локальный сервер в `.mcs` (сервер должен быть остановлен) и загружает архив через `POST /imports/mcs` удалённого экземпляра (multipart, стриминг).
+```json
+{
+  "url": "https://example.com:5173",
+  "username": "admin",
+  "password": "secret",
+  "serverId": "<локальный id>",
+  "name": "My Server",      // опционально
+  "port": 25565             // опционально
+}
+```
+→ `201` `{ "server": MinecraftServer }` (созданный на удалённой стороне) | `400` `{ "error": "push_failed", ... }`.
+
 ## RCON
 
 ### POST `/servers/:id/rcon` *(operator)*

@@ -131,3 +131,12 @@ export interface LauncherVersionsResponse {
   versions: string[];
   loaders?: string[];
 }
+
+export interface RemoteServerInfo {
+  id: string;
+  name: string;
+  type: ServerType;
+  version: string;
+  status: ServerStatus;
+  memoryMaxMb: number;
+}

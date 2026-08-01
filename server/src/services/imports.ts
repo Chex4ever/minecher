@@ -2,9 +2,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
+import { pipeline } from "node:stream/promises";
+import { Readable, PassThrough } from "node:stream";
 import AdmZip from "adm-zip";
 import type { ZipArchive } from "archiver";
-import type { MinecraftServer, ServerType } from "@minecher/types";
+import type { MinecraftServer, RemoteServerInfo, ServerType } from "@minecher/types";
 import type { AppConfig } from "../config.js";
 import type { Db } from "../db.js";
 import type { ServerRepository } from "./serverRepository.js";
@@ -109,6 +111,21 @@ function dirSize(dir: string): number {
     else if (entry.isFile()) total += fs.statSync(p).size;
   }
   return total;
+}
+
+export interface RemoteTarget {
+  url: string;
+  username: string;
+  password: string;
+}
+
+function normalizeRemoteUrl(raw: string): string {
+  let url = raw.trim();
+  if (!url) throw new Error("Remote Minecher URL is required");
+  if (!/^https?:\/\//i.test(url)) url = `http://${url}`;
+  const parsed = new URL(url);
+  if (parsed.username || parsed.password) throw new Error("Do not put credentials in the URL");
+  return url.replace(/\/+$/, "");
 }
 
 export class ImportService {
@@ -277,5 +294,113 @@ export class ImportService {
 
     this.logs.append(server.id, "system", `Exported .mcs archive (size=${fs.statSync(target).size})`);
     return { path: target, size: fs.statSync(target).size };
+  }
+
+  private async remoteAuth(target: RemoteTarget): Promise<string> {
+    const base = normalizeRemoteUrl(target.url);
+    const res = await fetch(`${base}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: target.username, password: target.password }),
+    });
+    const body = (await res.json().catch(() => ({}))) as { token?: string; message?: string };
+    if (!res.ok || !body.token) {
+      throw new Error(body.message ? `Remote login failed: ${body.message}` : `Remote login failed (HTTP ${res.status})`);
+    }
+    return body.token;
+  }
+
+  async listRemote(target: RemoteTarget): Promise<RemoteServerInfo[]> {
+    const base = normalizeRemoteUrl(target.url);
+    const token = await this.remoteAuth(target);
+    const res = await fetch(`${base}/api/servers`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const body = (await res.json().catch(() => ({}))) as { servers?: MinecraftServer[] };
+    if (!res.ok || !body.servers) {
+      throw new Error(`Failed to list remote servers (HTTP ${res.status})`);
+    }
+    return body.servers.map((s) => ({
+      id: s.id,
+      name: s.name,
+      type: s.type,
+      version: s.version,
+      status: s.status,
+      memoryMaxMb: s.memoryMaxMb,
+    }));
+  }
+
+  async importRemote(
+    target: RemoteTarget,
+    serverId: string,
+    input: { name?: string; port?: number } = {},
+  ): Promise<MinecraftServer> {
+    const base = normalizeRemoteUrl(target.url);
+    const token = await this.remoteAuth(target);
+    const res = await fetch(`${base}/api/servers/${serverId}/export`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok || !res.body) {
+      const body = (await res.json().catch(() => ({}))) as { message?: string };
+      throw new Error(body.message ? `Remote export failed: ${body.message}` : `Remote export failed (HTTP ${res.status})`);
+    }
+    const tmp = path.join(this.config.dataDir, "tmp", `remote-${randomUUID()}.mcs`);
+    fs.mkdirSync(path.dirname(tmp), { recursive: true });
+    try {
+      await pipeline(Readable.fromWeb(res.body as never), fs.createWriteStream(tmp));
+      return await this.importMcS(tmp, input);
+    } finally {
+      fs.rmSync(tmp, { force: true });
+    }
+  }
+
+  async pushRemote(
+    target: RemoteTarget,
+    serverId: string,
+    input: { name?: string; port?: number } = {},
+  ): Promise<MinecraftServer> {
+    const base = normalizeRemoteUrl(target.url);
+    const token = await this.remoteAuth(target);
+    const { path: archive } = await this.exportMcS(serverId);
+    const boundary = `----minecher${randomUUID().replace(/-/g, "")}`;
+    try {
+      const header = Buffer.from(
+        [
+          `--${boundary}`,
+          `Content-Disposition: form-data; name="file"; filename="${path.basename(archive)}"`,
+          "Content-Type: application/zip",
+          "",
+          "",
+        ].join("\r\n"),
+      );
+      const footer = Buffer.from(`\r\n--${boundary}--\r\n`);
+      const body = new PassThrough();
+      body.write(header);
+      await new Promise<void>((resolve, reject) => {
+        const src = fs.createReadStream(archive);
+        src.on("error", reject);
+        src.on("end", () => {
+          body.end(footer);
+          resolve();
+        });
+        src.pipe(body, { end: false });
+      });
+      const res = await fetch(`${base}/api/imports/mcs`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": `multipart/form-data; boundary=${boundary}`,
+        },
+        body,
+      });
+      const json = (await res.json().catch(() => ({}))) as { server?: MinecraftServer; message?: string };
+      if (!res.ok || !json.server) {
+        throw new Error(json.message ? `Remote import failed: ${json.message}` : `Remote import failed (HTTP ${res.status})`);
+      }
+      this.logs.append(serverId, "system", `Pushed server to ${base}`);
+      return json.server;
+    } finally {
+      fs.rmSync(archive, { force: true });
+    }
   }
 }

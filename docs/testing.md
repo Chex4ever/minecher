@@ -48,6 +48,16 @@ $srv2 = Invoke-RestMethod "$base/imports/path" -Method Post -Headers $h -Content
 Invoke-WebRequest "$base/servers/$($srv2.server.id)/export" -Headers $h -OutFile out.mcs
 # импорт .mcs (multipart, файл обязателен)
 Invoke-WebRequest "$base/imports/mcs" -Method Post -Headers $h -Form @{ file = Get-Item out.mcs }
+
+# перенос с другого Minecher: список серверов → импорт (pull)
+Invoke-RestMethod "$base/imports/remote/list" -Method Post -Headers $h -ContentType "application/json" `
+  -Body '{"url":"http://<другой-minecher>:5173","username":"admin","password":"admin"}'
+Invoke-RestMethod "$base/imports/remote" -Method Post -Headers $h -ContentType "application/json" `
+  -Body '{"url":"http://<другой-minecher>:5173","username":"admin","password":"admin","serverId":"<id>"}'
+
+# push: локальный сервер → на другой Minecher
+Invoke-RestMethod "$base/imports/remote/push" -Method Post -Headers $h -ContentType "application/json" `
+  -Body '{"url":"http://<другой-minecher>:5173","username":"admin","password":"admin","serverId":"<локальный id>"}'
 ```
 
 ## Проверенные сценарии (выполнены при разработке)

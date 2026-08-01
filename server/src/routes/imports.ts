@@ -4,7 +4,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { pipeline } from "node:stream/promises";
 import type { AppContext } from "../services/context.js";
-import type { ImportPathInput } from "../services/imports.js";
+import type { ImportPathInput, RemoteTarget } from "../services/imports.js";
 import { authenticate, requireRole } from "./auth.js";
 
 export function importRoutes(app: FastifyInstance, ctx: AppContext): void {
@@ -75,6 +75,80 @@ export function importRoutes(app: FastifyInstance, ctx: AppContext): void {
         return stream;
       } catch (err) {
         return reply.code(400).send({ error: "export_failed", message: String(err) });
+      }
+    },
+  );
+
+  app.post(
+    "/api/imports/remote/list",
+    { preHandler: [authenticate, requireRole("operator")] },
+    async (request, reply) => {
+      const body = (request.body ?? {}) as RemoteTarget;
+      if (!body.url || typeof body.url !== "string" || !body.username || !body.password) {
+        return reply.code(400).send({ error: "missing_fields", message: "url, username and password required" });
+      }
+      try {
+        const servers = await ctx.imports.listRemote(body);
+        return { servers };
+      } catch (err) {
+        return reply.code(400).send({ error: "remote_failed", message: String(err) });
+      }
+    },
+  );
+
+  app.post(
+    "/api/imports/remote",
+    { preHandler: [authenticate, requireRole("operator")] },
+    async (request, reply) => {
+      const body = (request.body ?? {}) as RemoteTarget & {
+        serverId?: string;
+        name?: string;
+        port?: number;
+      };
+      if (!body.url || typeof body.url !== "string" || !body.username || !body.password || !body.serverId) {
+        return reply.code(400).send({
+          error: "missing_fields",
+          message: "url, username, password and serverId required",
+        });
+      }
+      try {
+        const server = await ctx.imports.importRemote(
+          { url: body.url, username: body.username, password: body.password },
+          body.serverId,
+          { name: body.name, port: body.port },
+        );
+        ctx.events.emitServerEvent({ type: "created", server });
+        return reply.code(201).send({ server });
+      } catch (err) {
+        return reply.code(400).send({ error: "import_failed", message: String(err) });
+      }
+    },
+  );
+
+  app.post(
+    "/api/imports/remote/push",
+    { preHandler: [authenticate, requireRole("operator")] },
+    async (request, reply) => {
+      const body = (request.body ?? {}) as RemoteTarget & {
+        serverId?: string;
+        name?: string;
+        port?: number;
+      };
+      if (!body.url || typeof body.url !== "string" || !body.username || !body.password || !body.serverId) {
+        return reply.code(400).send({
+          error: "missing_fields",
+          message: "url, username, password and serverId required",
+        });
+      }
+      try {
+        const remote = await ctx.imports.pushRemote(
+          { url: body.url, username: body.username, password: body.password },
+          body.serverId,
+          { name: body.name, port: body.port },
+        );
+        return reply.code(201).send({ server: remote });
+      } catch (err) {
+        return reply.code(400).send({ error: "push_failed", message: String(err) });
       }
     },
   );

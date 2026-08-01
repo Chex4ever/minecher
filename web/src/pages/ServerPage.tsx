@@ -8,6 +8,7 @@ import Logs from "../components/Logs";
 import Settings from "../components/Settings";
 import Backups from "../components/Backups";
 import Schedules from "../components/Schedules";
+import PushServer from "../components/PushServer";
 
 type Tab = "console" | "logs" | "settings" | "backups" | "schedules";
 
@@ -18,6 +19,7 @@ export default function ServerPage() {
   const [server, setServer] = useState<MinecraftServer | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
+  const [showPush, setShowPush] = useState(false);
 
   const refresh = async () => {
     if (!id) return;
@@ -77,22 +79,27 @@ export default function ServerPage() {
           </>
         )}
         {canOperate && server && (
-          <button
-            className="ghost"
-            onClick={() =>
-              void act("Exporting…", async () => {
-                const { blob, filename } = await api.exportMcS(server.id);
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement("a");
-                a.href = url;
-                a.download = filename;
-                a.click();
-                URL.revokeObjectURL(url);
-              })
-            }
-          >
-            Export .mcs
-          </button>
+          <>
+            <button
+              className="ghost"
+              onClick={() =>
+                void act("Exporting…", async () => {
+                  const { blob, filename } = await api.exportMcS(server.id);
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = filename;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                })
+              }
+            >
+              Export .mcs
+            </button>
+            <button className="ghost" onClick={() => setShowPush(true)}>
+              Push to Minecher
+            </button>
+          </>
         )}
       </header>
 
@@ -113,6 +120,18 @@ export default function ServerPage() {
         {tab === "backups" && <Backups serverId={id} />}
         {tab === "schedules" && <Schedules serverId={id} />}
       </main>
+
+      {showPush && server && (
+        <PushServer
+          serverId={server.id}
+          serverName={server.name}
+          onClose={() => setShowPush(false)}
+          onPushed={() => {
+            setShowPush(false);
+            setFlash("Pushed");
+          }}
+        />
+      )}
     </div>
   );
 }
