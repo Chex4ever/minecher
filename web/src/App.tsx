@@ -5,6 +5,7 @@ import Dashboard from "./pages/Dashboard";
 import ServerPage from "./pages/ServerPage";
 import Launcher from "./pages/Launcher";
 import Account from "./pages/Account";
+import Users from "./pages/Users";
 
 function Guard({ children }: { children: React.ReactNode }) {
   const { session, loading } = useAuth();
@@ -47,6 +48,14 @@ export default function App() {
           element={
             <Guard>
               <Account />
+            </Guard>
+          }
+        />
+        <Route
+          path="/users"
+          element={
+            <Guard>
+              <Users />
             </Guard>
           }
         />

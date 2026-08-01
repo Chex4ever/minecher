@@ -65,6 +65,11 @@ export default function Dashboard() {
         <Link className="button ghost" to="/launcher">
           Launcher
         </Link>
+        {isAdmin && (
+          <Link className="button ghost" to="/users">
+            Users
+          </Link>
+        )}
         {canOperate && (
           <>
             <button className="ghost" onClick={() => setShowImport(true)}>

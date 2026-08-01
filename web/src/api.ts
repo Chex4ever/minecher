@@ -96,8 +96,9 @@ export const api = {
     const qs = exclude ? `?exclude=${encodeURIComponent(exclude)}` : "";
     return request<{ port: number; available: boolean; usedBy: string | null }>(`/ports/${port}${qs}`);
   },
-  createUser: (body: { username: string; password: string; role: string }) =>
-    request<{ user: unknown }>("/auth/users", { method: "POST", body: JSON.stringify(body) }),
+  listUsers: () => request<{ users: import("@minecher/types").User[] }>("/auth/users"),
+  createUser: (body: { username: string; password: string; role: import("@minecher/types").User["role"] }) =>
+    request<{ user: import("@minecher/types").User }>("/auth/users", { method: "POST", body: JSON.stringify(body) }),
   importPath: (body: Record<string, unknown>) =>
     request<{ server: import("@minecher/types").MinecraftServer }>("/imports/path", {
       method: "POST",
@@ -113,6 +114,35 @@ export const api = {
       body: form,
     });
   },
+  listRemoteServers: (body: { url: string; username: string; password: string }) =>
+    request<{ servers: import("@minecher/types").RemoteServerInfo[] }>("/imports/remote/list", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  importRemote: (body: {
+    url: string;
+    username: string;
+    password: string;
+    serverId: string;
+    name?: string;
+    port?: number;
+  }) =>
+    request<{ server: import("@minecher/types").MinecraftServer }>("/imports/remote", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  pushRemote: (body: {
+    url: string;
+    username: string;
+    password: string;
+    serverId: string;
+    name?: string;
+    port?: number;
+  }) =>
+    request<{ server: import("@minecher/types").MinecraftServer }>("/imports/remote/push", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   exportMcS: async (id: string): Promise<{ blob: Blob; filename: string }> => {
     const token = getToken();
     const res = await fetch(`/api/servers/${id}/export`, {

@@ -39,7 +39,7 @@ Minecher — монорепозиторий на npm workspaces с двумя р
 | `versions.ts` | список типов, версий и лоадеров |
 | `backups.ts` | список/создание/восстановление/удаление бэкапов |
 | `schedules.ts` | CRUD расписаний + ручной RCON-эндпоинт |
-| `imports.ts` | импорт из папки/`.mcs`, экспорт в `.mcs` |
+| `imports.ts` | импорт из папки/`.mcs`, экспорт в `.mcs`, прямой перенос между Minecher (pull/push) |
 | `ports.ts` | резервирование блока 5 портов на сервер (`port..port+4`: игровой, rcon, query, резерв), подбор свободного блока, проверка `GET /api/ports/:port` |
 | `client.ts` | клиентский лаунчер: версии/лоадеры, сборки (create/list/get/download/delete) |
 
@@ -52,7 +52,7 @@ Minecher — монорепозиторий на npm workspaces с двумя р
 - **logStore** — каждый вывод сервера пишется в файл `data/logs/<id>/<date>.log` и в таблицу `log_index`; генерирует `log`-события.
 - **download** — кэш jar в `data/versions/<type>/`, фолбэк на `resolveJar` из `VersionSource`.
 - **backups** — zip мира (исключая logs и jar) через `archiver`, восстановление через staging-каталог + `adm-zip`.
-- **imports** — копирование папки-сервера и распаковка/создание `.mcs`-архивов (`adm-zip`), автодетект типа, подбор порта.
+- **imports** — копирование папки-сервера и распаковка/создание `.mcs`-архивов (`adm-zip`), автодетект типа, подбор порта. Прямой перенос между экземплярами: pull (`listRemote`/`importRemote` — логин на удалённом Minecher через `POST /auth/login`, скачивание `.mcs`-экспорта через `fetch`, импорт через `importMcS`) и push (`pushRemote` — экспорт локального сервера в `.mcs`, стриминг multipart-загрузки на удалённый `POST /imports/mcs`).
 - **scheduler** — cron через `cron-parser`, тик каждые 30 секунд, дедупликация срабатываний по id+время.
 - **rcon** — RCON-клиент (TCP, 4-байтные фреймы), фолбэк для команд, когда stdin недоступен.
 - **clientService** — сборка клиентского лаунчера: версии/лоадеры (vanilla manifest, meta.fabricmc.net, Forge maven), очередь сборок, скачивание клиентского jar/библиотек/полных ассетов, Forge-установка `--installClient`, генерация `launcher.json`, Java-argfiles и `start.bat`/`start.sh`, упаковка в ZIP. Подробности и решения — ADR-020, layout — `docs/data-model.md`.
@@ -71,7 +71,7 @@ java stdout/stderr ──► processManager.handleOutput ──► logStore.appe
 
 - `api.ts` — тонкий клиент с JWT из localStorage; WS-URL строится с `?token=`, аватар-URL — с `?token=` для `<img>`.
 - `auth.tsx` — контекст сессии (`Session = User`) и ролей; `updateUser` обновляет сессию после правок профиля.
-- Страницы: `Login`, `Dashboard` (карточки серверов, создание; клик по username/аватару → `/settings`), `Account` (`/settings` — смена username/email, пароля, аватара), `ServerPage` (вкладки Console/Logs/Settings/Backups/Schedules), `Launcher` (сборка клиента: форма версии/лоадера/ника, список сборок с прогрессом, скачивание ZIP, модал с инструкцией для PojavLauncher).
+- Страницы: `Login`, `Dashboard` (карточки серверов, создание; клик по username/аватару → `/settings`), `Account` (`/settings` — смена username/email, пароля, аватара), `ServerPage` (вкладки Console/Logs/Settings/Backups/Schedules), `Launcher` (сборка клиента: форма версии/лоадера/ника, список сборок с прогрессом, скачивание ZIP, модал с инструкцией для PojavLauncher), `Users` (`/users`, только admin — список пользователей и создание новых с выбором роли).
 - Vite dev-проксирует `/api` (включая ws) на `:8080`.
 - Для доступа через интернет/NAT используется `vite preview` (`npm run preview -w web`): та же прокси-конфигурация (`preview.proxy`), но без HMR — статическая сборка `web/dist`, минимум соединений. Конфигурация вынесена в `web/vite.config.ts` (`server.proxy` и `preview.proxy` идентичны).
 

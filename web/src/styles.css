@@ -158,6 +158,52 @@ button:disabled {
   align-items: center;
 }
 
+.user-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.user-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.user-row:last-child {
+  border-bottom: none;
+}
+
+.user-name {
+  flex: 1;
+  font-weight: 500;
+}
+
+.role {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.role-admin {
+  background: rgba(229, 57, 53, 0.15);
+  color: #ef5350;
+}
+
+.role-operator {
+  background: rgba(251, 140, 0, 0.15);
+  color: #ffb74d;
+}
+
+.role-viewer {
+  background: rgba(97, 97, 97, 0.15);
+  color: var(--muted);
+}
+
 .port-hint {
   font-size: 11px;
   color: var(--muted);
